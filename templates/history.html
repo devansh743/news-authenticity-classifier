@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-container">
+    <div class="dash-header">
+        <h2>Your <span>Prediction History</span></h2>
+        <a href="/dashboard" class="btn-secondary">Back to Dashboard</a>
+    </div>
+
+    <div class="card">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Date/ID</th>
+                    <th style="width: 50%;">News Content</th>
+                    <th>Result</th>
+                    <th>Confidence</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in records %}
+                <tr>
+                    <td>#{{ record.id }}</td>
+                    <td class="text-truncate">{{ record.news[:100] }}...</td>
+                    <td><span class="badge {{ record.prediction|lower }}">{{ record.prediction }}</span></td>
+                    <td>{{ record.confidence }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

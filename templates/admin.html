@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-container">
+    <div class="dash-header">
+        <h2>Admin <span>Control Panel</span></h2>
+        <a href="/logout" class="btn-logout">Exit Admin Mode</a>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card total">
+            <h4>Total Users</h4>
+            <p>{{ users|length }}</p>
+        </div>
+        <div class="stat-card fake">
+            <h4>Total Analyzed</h4>
+            <p>{{ history|length }}</p>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+        <h3>System User Management</h3>
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>#{{ user.id }}</td>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        <a href="/admin/delete_user/{{ user.id }}" class="action-link delete" onclick="return confirm('Delete this user?')">Remove User</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card" style="margin-top: 30px;">
+        <h3>Global Prediction History</h3>
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Prediction</th>
+                    <th>Confidence</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in history %}
+                <tr>
+                    <td><strong>{{ row.username }}</strong></td>
+                    <td><span class="badge {{ row.prediction|lower }}">{{ row.prediction }}</span></td>
+                    <td>{{ row.confidence }}%</td>
+                    <td>
+                        <a href="/admin/delete_record/{{ row.id }}" class="action-link delete">Delete Entry</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

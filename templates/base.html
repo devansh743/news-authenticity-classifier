@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <meta charset="UTF-8">
+    <title>AI Fake News Detection</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+</head>
+
+<body>
+
+<nav class="navbar">
+
+    <div class="logo">
+        🧠 AI Fake News Detection System
+    </div>
+
+    <div class="nav-links">
+        <a href="/">Home</a>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/login">Login</a>
+        <a href="/register" class="nav-btn">Register</a>
+    </div>
+
+</nav>
+
+<div class="main-container">
+    {% block content %}{% endblock %}
+</div>
+
+{% block scripts %}{% endblock %}
+<script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+<script>
+function showToast(message, type="info") {
+
+    const container = document.getElementById("toast-container");
+
+    const toast = document.createElement("div");
+    toast.classList.add("toast", type);
+    toast.innerText = message;
+
+    container.appendChild(toast);
+
+    // Auto remove after 3 sec
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+</script>
+
+<!-- Toast Notification Container -->
+<div id="toast-container"></div>
+</body>
+</html>

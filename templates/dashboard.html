@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <div class="dash-header">
+        <div class="header-content">
+            <h2>Welcome back, <span>{{ user }}</span></h2>
+            <p class="dash-subtitle">Real-time news credibility analysis dashboard.</p>
+        </div>
+        
+        <div class="header-actions">
+            <a href="/history" class="btn-secondary">
+                <i class="fas fa-history"></i> History
+            </a>
+            <a href="/logout" class="btn-logout">Logout</a>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card total">
+            <h4>Total Predictions</h4>
+            <p>{{ stats.total }}</p>
+        </div>
+        <div class="stat-card real">
+            <h4>Real News</h4>
+            <p>{{ stats.real }}</p>
+        </div>
+        <div class="stat-card fake">
+            <h4>Fake News</h4>
+            <p>{{ stats.fake }}</p>
+        </div>
+        <div class="stat-card acc">
+            <h4>Accuracy</h4>
+            <p>{{ stats.accuracy }}%</p>
+        </div>
+    </div>
+
+    <div class="bottom-section">
+        
+        <div class="chart-card">
+            <h3>Prediction Distribution</h3>
+            <div class="chart-wrapper">
+                <canvas id="statsChart"></canvas>
+            </div>
+        </div>
+
+        <div class="analyze-container">
+            <h3>Analyze New Article</h3>
+            <form method="POST" id="analyzeForm">
+                <textarea name="news" required class="news-box" placeholder="Paste article text here...">{{ request.form.news if request.form.news }}</textarea>
+                <button type="submit" class="primary-btn" id="analyzeBtn">Analyze Credibility</button>
+            </form>
+
+            {% if prediction %}
+            <div class="result-box {{ prediction|lower }}">
+                <strong>Result: {{ prediction }}</strong><br>
+                <span>Confidence Score: {{ confidence }}%</span>
+            </div>
+            {% endif %}
+
+            {% if error %}
+            <div class="result-box fake">
+                {{ error }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // 1. Chart initialization
+    const stats = JSON.parse('{{ stats | tojson | safe }}');
+    const ctx = document.getElementById("statsChart").getContext('2d');
+    
+    new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels: ["Real", "Fake"],
+            datasets: [{
+                data: [stats.real, stats.fake],
+                backgroundColor: ['#22c55e', '#ef4444'], // Matches your UI colors
+                hoverOffset: 4,
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+
+    // 2. Button Loading State
+    document.getElementById("analyzeForm").addEventListener("submit", function() {
+        let btn = document.getElementById("analyzeBtn");
+        btn.innerHTML = '<span class="loader"></span> Analyzing...';
+        btn.style.opacity = "0.7";
+        btn.disabled = true;
+    });
+</script>
+
+{% if prediction %}
+<script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+<script>
+Toastify({
+    text: "Analysis Complete: {{ prediction }}",
+    duration: 3000,
+    gravity: "top",
+    position: "right",
+    style: {
+        background: "{{ '#22c55e' if prediction == 'Real' else '#ef4444' }}",
+        borderRadius: "10px"
+    }
+}).showToast();
+</script>
+{% endif %}
+{% endblock %}

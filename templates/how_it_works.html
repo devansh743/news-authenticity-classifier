@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="info-container slide-up">
+    <h1>How Fake News Detection Works</h1>
+
+    <div class="step">
+        <span>1</span>
+        <p>User enters a news article into the system.</p>
+    </div>
+
+    <div class="step">
+        <span>2</span>
+        <p>Text preprocessing is applied (cleaning, stop-word removal).</p>
+    </div>
+
+    <div class="step">
+        <span>3</span>
+        <p>TF-IDF converts text into numerical vectors.</p>
+    </div>
+
+    <div class="step">
+        <span>4</span>
+        <p>Machine Learning model analyzes the patterns.</p>
+    </div>
+
+    <div class="step">
+        <span>5</span>
+        <p>System predicts whether the news is <b>Real</b> or <b>Fake</b>.</p>
+    </div>
+</div>
+
+{% endblock %}

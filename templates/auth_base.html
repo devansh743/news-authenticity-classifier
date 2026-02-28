@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Fake News Detection</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<script src="{{ url_for('static', filename='auth.js') }}"></script>
+<body>
+
+<nav class="navbar">
+    <div class="logo">🧠 AI Fake News Detection</div>
+    <ul class="nav-links">
+        <li><a href="/">Home</a></li>
+        <li><a href="/login">Login</a></li>
+        <li><a href="/register" class="btn">Register</a></li>
+    </ul>
+</nav>
+
+<div class="auth-page">
+    <div class="auth-container fade-in">
+        {% block content %}{% endblock %}
+    </div>
+</div>
+
+</body>
+</html>
