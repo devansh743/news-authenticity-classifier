@@ -306,6 +306,10 @@ def history():
 
     return render_template("history.html", records=records)
 
+@app.route('/health')
+def health():
+    return "I am awake!", 200
+
 # ---------- RUN ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
