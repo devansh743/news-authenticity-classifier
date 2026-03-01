@@ -34,11 +34,9 @@ A full-stack Machine Learning application that detects fake news articles with h
 ---
 
 ## 📊 Model Performance
-The model was trained on a balanced dataset of ~40,000 news articles.
-- **Accuracy:** ~94.5% 
-- **Algorithm:** Passive Aggressive Classifier
-- **Preprocessing:** Stop-word removal & TF-IDF Vectorization
-
+- **Accuracy:** 98.46%
+- **Algorithm:** Logistic Regression (optimized via TfidfVectorizer)
+- **Status:** Verified and Deployed
 ---
 
 ## 📂 Project Structure
