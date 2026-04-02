@@ -236,13 +236,18 @@ def delete_record(record_id):
 
 @app.route('/admin/delete_user/<int:user_id>')
 def delete_user(user_id):
-    if 'admin' not in session: return redirect('/login')
+    # Use 'users.db' because that is the name in your file explorer
+    conn = sqlite3.connect('users.db', timeout=20) 
+    try:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+        flash("User account removed", "info")
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return f"Error: {e}", 500
+    finally:
+        conn.close() 
     
-    conn = get_db_connection()
-    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-    conn.commit()
-    conn.close()
-    flash("User account removed", "info")
     return redirect('/admin')
 
 @app.route('/logout')
