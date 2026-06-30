@@ -3,12 +3,13 @@
 {% block content %}
 <div class="dashboard-container">
 
-    <div class="dash-header">
+    <div class="dash-header hero-panel">
         <div class="header-content">
+            <div class="hero-badge">AI Powered</div>
             <h2>Welcome back, <span>{{ user }}</span></h2>
-            <p class="dash-subtitle">Real-time news credibility analysis dashboard.</p>
+            <p class="dash-subtitle">Run fast, reliable credibility checks on breaking news and pasted articles from one polished workspace.</p>
         </div>
-        
+
         <div class="header-actions">
             <a href="/history" class="btn-secondary">
                 <i class="fas fa-history"></i> History
@@ -37,7 +38,7 @@
     </div>
 
     <div class="bottom-section">
-        
+
         <div class="chart-card">
             <h3>Prediction Distribution</h3>
             <div class="chart-wrapper">
@@ -47,17 +48,49 @@
 
         <div class="analyze-container">
             <h3>Analyze New Article</h3>
+            <p class="dash-subtitle">Paste article text or provide a live news URL for analysis.</p>
             <form method="POST" id="analyzeForm">
-                <textarea name="news" required class="news-box" placeholder="Paste article text here...">{{ request.form.news if request.form.news }}</textarea>
+                <input type="url" name="url" class="news-box" style="margin-bottom: 10px; min-height: 50px;" placeholder="https://example.com/news-story" value="{{ news_url }}">
+                <textarea name="news" class="news-box" placeholder="Paste article text here...">{{ news_text }}</textarea>
                 <button type="submit" class="primary-btn" id="analyzeBtn">Analyze Credibility</button>
             </form>
 
             {% if prediction %}
-            <div class="result-box {{ prediction|lower }}">
-                <strong>Result: {{ prediction }}</strong><br>
-                <span>Confidence Score: {{ confidence }}%</span>
+            <!-- Prominent result card for clear visibility -->
+            <div class="result-panel">
+                <div class="result-card-wrap">
+                    <div class="result-card {{ 'real' if prediction == 'REAL' else 'fake' if prediction == 'FAKE' else 'neutral' }}">
+                        <div class="result-head">
+                            <span class="result-badge {{ 'badge-real' if prediction == 'REAL' else 'badge-fake' if prediction == 'FAKE' else 'badge-neutral' }}">{{ prediction }}</span>
+                            <div class="result-title">
+                                {{ 'Likely Real News' if prediction == 'REAL' else 'Likely Fake News' if prediction == 'FAKE' else 'Not Enough News Context' }}
+                            </div>
+                        </div>
+                        {% if confidence is not none %}
+                        <div class="confidence-row">
+                            <div class="confidence-number">{{ confidence }}%</div>
+                            <div class="confidence-bar-outer" aria-hidden="true">
+                                <div class="confidence-bar-inner" style="width: {{ confidence }}%; background: {% if prediction=='REAL' %}linear-gradient(90deg,#16a34a,#22c55e){% elif prediction=='FAKE' %}linear-gradient(90deg,#ef4444,#f43f5e){% else %}linear-gradient(90deg,#64748b,#94a3b8){% endif %};"></div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if notice %}
+                        <div class="notice-badge">Heads up</div>
+                        <p class="result-note notice-text">{{ notice }}</p>
+                        {% endif %}
+                        <p class="result-note">Suggestion: Cross-check the article source, verify author/byline, and consult multiple reputable outlets before sharing.</p>
+                    </div>
+                </div>
             </div>
             {% endif %}
+
+            {% if preview %}
+            <div class="preview-box">
+                <strong>Preview:</strong> {{ preview }}
+            </div>
+            {% endif %}
+
+            {# Result is shown above in the prominent panel; no duplicate needed here #}
 
             {% if error %}
             <div class="result-box fake">
@@ -72,17 +105,16 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-    // 1. Chart initialization
     const stats = JSON.parse('{{ stats | tojson | safe }}');
     const ctx = document.getElementById("statsChart").getContext('2d');
-    
+
     new Chart(ctx, {
         type: "doughnut",
         data: {
             labels: ["Real", "Fake"],
             datasets: [{
                 data: [stats.real, stats.fake],
-                backgroundColor: ['#22c55e', '#ef4444'], // Matches your UI colors
+                backgroundColor: ['#22c55e', '#ef4444'],
                 hoverOffset: 4,
                 borderWidth: 0
             }]
@@ -96,13 +128,68 @@
         }
     });
 
-    // 2. Button Loading State
-    document.getElementById("analyzeForm").addEventListener("submit", function() {
-        let btn = document.getElementById("analyzeBtn");
+    // Intercept form submit and call JSON API for immediate, clear results
+    const analyzeForm = document.getElementById('analyzeForm');
+    analyzeForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const btn = document.getElementById('analyzeBtn');
         btn.innerHTML = '<span class="loader"></span> Analyzing...';
-        btn.style.opacity = "0.7";
+        btn.style.opacity = '0.7';
         btn.disabled = true;
+
+        const fd = new FormData(analyzeForm);
+        try {
+            const resp = await fetch('/api/analyze', { method: 'POST', body: fd });
+            const data = await resp.json();
+            renderResult(data);
+        } catch (err) {
+            renderResult({ error: 'Network error while analyzing.' });
+        } finally {
+            btn.innerHTML = 'Analyze Credibility';
+            btn.style.opacity = '';
+            btn.disabled = false;
+        }
     });
+
+    function renderResult(data) {
+        // ensure container exists
+        let container = document.querySelector('.result-panel');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'result-panel';
+            const parent = document.querySelector('.analyze-container');
+            parent.insertBefore(container, parent.querySelector('.preview-box'));
+        }
+
+        if (data.error) {
+            container.innerHTML = `<div class="result-card fake"><div class="result-head"><span class="result-badge badge-fake">ERROR</span><div class="result-title">Analysis failed</div></div><p class="result-note">${data.error}</p></div>`;
+            container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+
+        const pred = data.prediction;
+        const conf = data.confidence;
+        const notice = data.notice ? `<div class="notice-badge">Heads up</div><p class="result-note notice-text">${data.notice}</p>` : '';
+        const cardClass = pred === 'REAL' ? 'real' : pred === 'FAKE' ? 'fake' : 'neutral';
+        const badgeClass = pred === 'REAL' ? 'badge-real' : pred === 'FAKE' ? 'badge-fake' : 'badge-neutral';
+        const title = pred === 'REAL' ? 'Likely Real News' : pred === 'FAKE' ? 'Likely Fake News' : 'Not Enough News Context';
+        const confidenceHtml = conf !== null && conf !== undefined
+            ? `<div class="confidence-row"><div class="confidence-number">${conf}%</div><div class="confidence-bar-outer"><div class="confidence-bar-inner" style="width:${conf}%; background: ${pred=='REAL' ? 'linear-gradient(90deg,#16a34a,#22c55e)' : pred=='FAKE' ? 'linear-gradient(90deg,#ef4444,#f43f5e)' : 'linear-gradient(90deg,#64748b,#94a3b8)'}"></div></div></div>`
+            : `<div class="confidence-row"><div class="confidence-number">N/A</div><div class="confidence-bar-outer"><div class="confidence-bar-inner" style="width:100%; background: linear-gradient(90deg,#cbd5e1,#94a3b8)"></div></div></div>`;
+
+        container.innerHTML = `
+            <div class="result-card ${cardClass}">
+                <div class="result-head">
+                    <span class="result-badge ${badgeClass}">${pred}</span>
+                    <div class="result-title">${title}</div>
+                </div>
+                ${confidenceHtml}
+                ${notice}
+                <p class="result-note">Suggestion: Cross-check the article source and consult multiple reputable outlets before sharing.</p>
+            </div>`;
+
+        container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
 </script>
 
 {% if prediction %}
@@ -114,7 +201,7 @@ Toastify({
     gravity: "top",
     position: "right",
     style: {
-        background: "{{ '#22c55e' if prediction == 'Real' else '#ef4444' }}",
+        background: "{{ '#22c55e' if prediction == 'REAL' else '#ef4444' }}",
         borderRadius: "10px"
     }
 }).showToast();

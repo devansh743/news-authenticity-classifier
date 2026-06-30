@@ -1,53 +1,107 @@
-from flask import Flask, render_template, request, redirect, session, url_for, flash
+from flask import Flask, render_template, request, redirect, session, flash
 import sqlite3
 import pickle
 import os
 import json
+import re
+from html import unescape
+from urllib.request import Request, urlopen
+from urllib.error import URLError, HTTPError
+
+# Use sentence-transformers for lightweight embeddings in the app
+from sentence_transformers import SentenceTransformer
+from werkzeug.security import generate_password_hash, check_password_hash
 
 ADMIN_EMAIL = "admin@fnd.com"
 ADMIN_PASSWORD = "admin123"
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
 
-model = pickle.load(open(os.path.join(BASE_DIR, "model.pkl"), "rb"))
-vectorizer = pickle.load(open(os.path.join(BASE_DIR, "vectorizer.pkl"), "rb"))
-from werkzeug.security import generate_password_hash, check_password_hash
+with open(MODEL_PATH, "rb") as f:
+    model = pickle.load(f)
+
+# optional legacy vectorizer (used if model expects sparse TF-IDF input)
+VECT_PATH = os.path.join(BASE_DIR, "vectorizer.pkl")
+vectorizer = None
+if os.path.exists(VECT_PATH):
+    try:
+        with open(VECT_PATH, 'rb') as vf:
+            vectorizer = pickle.load(vf)
+    except Exception:
+        vectorizer = None
+
+MODEL_NAME = "all-MiniLM-L6-v2"
+st_model = SentenceTransformer(MODEL_NAME)
 
 app = Flask(__name__)
 app.secret_key = "secretkey123"
 
-# Absolute path for database (WINDOWS FIX)
+MIN_ANALYSIS_WORDS = 8
+MIN_RELIABLE_WORDS = 25
+
+
+def combine_notices(*messages):
+    return " ".join(message for message in messages if message)
+
+
+def analyze_input(text):
+    cleaned = normalize_text(text)
+    if not cleaned:
+        raise ValueError("Text is empty")
+
+    word_count = len(cleaned.split())
+    if word_count < MIN_ANALYSIS_WORDS:
+        raise ValueError(f"Input too short. Please paste at least {MIN_ANALYSIS_WORDS} words.")
+
+    notice_parts = []
+    if word_count < MIN_RELIABLE_WORDS:
+        notice_parts.append("This is a short paragraph, so the result may be less reliable than a full article.")
+
+    if not is_news(cleaned):
+        notice_parts.append("This input does not look like a news article, so no real/fake verdict was forced.")
+        return "NOT NEWS", None, None, combine_notices(*notice_parts)
+
+    prediction, confidence, explanation = predict_article(cleaned)
+    return prediction, confidence, explanation, combine_notices(*notice_parts)
+
 DB_PATH = os.path.join(BASE_DIR, "users.db")
 
-# ---------- TEST ROUTE ----------
+
 @app.route("/test")
 def test():
     return "Flask is working perfectly ✅"
 
-# ---------- DATABASE ----------
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def create_table():
     conn = get_db_connection()
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
         )
-    """)
+        """
+    )
     conn.commit()
     conn.close()
 
+
 create_table()
+
 
 def create_history_table():
     conn = get_db_connection()
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT,
@@ -55,146 +109,294 @@ def create_history_table():
             prediction TEXT,
             confidence REAL
         )
-    """)
+        """
+    )
     conn.commit()
     conn.close()
 
+
 create_history_table()
 
-# ---------- ROUTES ----------
+
 @app.route("/")
 def home():
     return redirect("/login")
+
 
 @app.route("/how-it-works")
 def how_it_works():
     return render_template("how_it_works.html")
 
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        username = request.form.get("username")
-        email = request.form.get("email")
-        password = generate_password_hash(request.form.get("password"))
+        username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
+        password = generate_password_hash(request.form.get("password", ""))
 
+        conn = None
         try:
             conn = get_db_connection()
             conn.execute(
                 "INSERT INTO users (username, email, password) VALUES (?, ?, ?)",
-                (username, email, password)
+                (username, email, password),
             )
             conn.commit()
-            conn.close()
 
-            flash("Registration successful. Please login.", "success")
-            return redirect("/login")
+            # Auto-login only for this first session after registration
+            session.clear()
+            session["user"] = username
+            session["just_registered"] = True
+            # ensure prior login flag is not set
+            session.pop("via_login", None)
+            flash("Registration successful. Welcome!", "success")
+            return redirect("/dashboard")
 
-        except Exception:
+        except sqlite3.IntegrityError:
             flash("User already exists or invalid data.", "error")
             return redirect("/register")
+
+        except Exception:
+            flash("Registration error. Please try again.", "error")
+            return redirect("/register")
+
+        finally:
+            if conn:
+                conn.close()
 
     return render_template("register.html")
 
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route("/login", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        password = request.form.get("password", "")
 
-        # ✅ ADMIN LOGIN
         if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
             session.clear()
-            session['admin'] = True
-            return redirect('/admin')
+            session["admin"] = True
+            return redirect("/admin")
 
-        # ✅ USER LOGIN
         conn = get_db_connection()
-        user = conn.execute(
-            "SELECT * FROM users WHERE email = ?", (email,)
-        ).fetchone()
+        user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         conn.close()
 
-        if user and check_password_hash(user['password'], password):
+        if user and check_password_hash(user["password"], password):
             session.clear()
-            session['user'] = user['username']
-            return redirect('/dashboard')
+            session["user"] = user["username"]
+            # mark this session as an explicit login so future visits remain authenticated
+            session["via_login"] = True
+            return redirect("/dashboard")
+        return render_template("login.html", error="Invalid email or password")
+
+    return render_template("login.html")
+
+
+def normalize_text(text):
+    if not text:
+        return ""
+    text = re.sub(r"http\S+|www\.\S+", " ", text)
+    text = re.sub(r"[^a-zA-Z0-9\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def is_news(text):
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return False
+
+    words = cleaned.split()
+    if len(words) < 15:
+        return False
+
+    lower = cleaned.lower()
+    news_keywords = [
+        "said",
+        "reported",
+        "government",
+        "minister",
+        "police",
+        "announced",
+        "according",
+        "election",
+        "president",
+        "court",
+        "official",
+        "company",
+        "percent",
+        "million",
+        "economy",
+        "health",
+        "war",
+    ]
+
+    hits = sum(1 for word in news_keywords if word in lower)
+    return hits >= 1
+
+
+def fetch_article_text(url):
+    if not url:
+        raise ValueError("No URL provided")
+
+    req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(req, timeout=15) as response:
+        html = response.read().decode("utf-8", errors="ignore")
+
+    cleaned = re.sub(r"<script.*?</script>", " ", html, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"<style.*?</style>", " ", cleaned, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+    cleaned = unescape(cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    if len(cleaned.split()) < 60:
+        raise ValueError("The page did not contain enough article text")
+
+    sentences = [s for s in re.split(r"(?<=[.!?])\s+", cleaned) if len(s.split()) > 8]
+    return " ".join(sentences[:20]) if sentences else cleaned
+
+
+def compute_embeddings(texts, max_length=256):
+    # SentenceTransformer handles batching and returns numpy arrays
+    if isinstance(texts, str):
+        texts = [texts]
+    return st_model.encode(texts, batch_size=32, convert_to_numpy=True)
+
+
+def predict_article(text):
+    cleaned = normalize_text(text)
+    if not cleaned:
+        raise ValueError("Text is empty")
+
+    data = compute_embeddings([cleaned])
+    try:
+        result = int(model.predict(data)[0])
+        probabilities = model.predict_proba(data)[0]
+    except Exception:
+        # fallback: if a vectorizer exists, try TF-IDF transform on raw text
+        if vectorizer is not None:
+            vec = vectorizer.transform([cleaned])
+            result = int(model.predict(vec)[0])
+            probabilities = model.predict_proba(vec)[0]
         else:
-            return render_template(
-                'login.html',
-                error="Invalid email or password"
-            )
+            raise
+    confidence = round(float(max(probabilities)) * 100, 2)
+    prediction = "REAL" if result == 1 else "FAKE"
+    # build a lightweight explanation: matched keywords and top words
+    lower = cleaned.lower()
+    news_keywords = [
+        "said",
+        "reported",
+        "government",
+        "minister",
+        "police",
+        "announced",
+        "according",
+        "election",
+        "president",
+        "court",
+        "official",
+        "company",
+        "percent",
+        "million",
+        "economy",
+        "health",
+        "war",
+    ]
+    matched = [k for k in news_keywords if k in lower]
+    # top words (simple frequency, excluding common stopwords)
+    stop = set(["the","and","a","to","of","in","for","on","is","that","it","with","as","was","are","be","by","an","this","from","at"])
+    words = [w for w in re.findall(r"\w+", lower) if w not in stop]
+    freq = {}
+    for w in words:
+        freq[w] = freq.get(w, 0) + 1
+    top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:6]
+    top_words = [w for w, _ in top]
 
-    # ✅ VERY IMPORTANT (GET request)
-    return render_template('login.html')
+    explanation = {"keywords": matched, "top_words": top_words}
+    return prediction, confidence, explanation
 
 
-# ---------- UPDATED DASHBOARD ROUTE ----------
+def get_article_preview(text, limit=120):
+    cleaned = normalize_text(text)
+    if not cleaned:
+        return ""
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit].rsplit(" ", 1)[0] + "..."
+
+
 @app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
+    # Must have a user in session AND either be an explicit login session
+    # or the one-time just-registered session. Any stale session without
+    # these flags will be cleared and required to log in again.
     if "user" not in session:
+        return redirect("/login")
+
+    if not session.get("via_login") and not session.get("just_registered") and not session.get("admin"):
+        # clear any stale session and require login
+        session.clear()
         return redirect("/login")
 
     prediction = None
     confidence = None
     error = None
+    notice = None
+    explanation = None
     news_content = ""
+    news_url = ""
 
     if request.method == "POST":
-        news_content = request.form.get("news", "")
+        news_content = (request.form.get("news", "") or "").strip()
+        news_url = (request.form.get("url", "") or "").strip()
 
-        # 1. Basic Validation
-        if not news_content or len(news_content.strip()) < 100:
-            error = "Article too short. Please paste at least 100 characters."
-        
-        # 2. Heuristic Check (is_news)
-        elif not is_news(news_content):
-            error = "This doesn't look like a news article. Please provide factual content."
-        
-        else:
-            try:
-                # ML Prediction
-                data = vectorizer.transform([news_content])
-                result = model.predict(data)[0]
-                prob = model.predict_proba(data)[0]
+        try:
+            if news_url:
+                news_content = fetch_article_text(news_url)
+            elif not news_content:
+                error = "Please paste article text or provide a valid URL."
+            else:
+                prediction, confidence, explanation, notice = analyze_input(news_content)
+                if prediction in ("REAL", "FAKE"):
+                    conn = get_db_connection()
+                    conn.execute(
+                        "INSERT INTO history (username, news, prediction, confidence) VALUES (?, ?, ?, ?)",
+                        (session["user"], news_content[:2000], prediction, confidence),
+                    )
+                    conn.commit()
+                    conn.close()
+                    flash("Analysis completed successfully!", "success")
+                    # expose explanation to template
+        except Exception as exc:
+            error = f"Unable to analyze this content: {exc}"
 
-                confidence = round(max(prob) * 100, 2)
-                prediction = "REAL" if result == 1 else "FAKE"
-
-                # Save to History
-                conn = get_db_connection()
-                conn.execute(
-                    "INSERT INTO history (username, news, prediction, confidence) VALUES (?, ?, ?, ?)",
-                    (session["user"], news_content[:500], prediction, confidence)
-                )
-                conn.commit()
-                conn.close()
-                flash("Analysis completed successfully!", "success")
-            except Exception as e:
-                error = "Analysis failed. Please try again later."
-
-    # Fetch Stats for the UI
     conn = get_db_connection()
     stats_data = conn.execute(
         "SELECT "
         "COUNT(*) as total, "
         "SUM(CASE WHEN prediction='REAL' THEN 1 ELSE 0 END) as real, "
         "SUM(CASE WHEN prediction='FAKE' THEN 1 ELSE 0 END) as fake "
-        "FROM history WHERE username=?", (session["user"],)
+        "FROM history WHERE username=?",
+        (session["user"],),
     ).fetchone()
-
-    total = stats_data['total'] or 0
-    real = stats_data['real'] or 0
-    fake = stats_data['fake'] or 0
-    accuracy = round((real / total) * 100, 2) if total > 0 else 0
     conn.close()
 
-    stats = {
-        "total": total,
-        "real": real,
-        "fake": fake,
-        "accuracy": accuracy
-    }
+    total = stats_data["total"] or 0
+    real = stats_data["real"] or 0
+    fake = stats_data["fake"] or 0
+    accuracy = round((real / total) * 100, 2) if total > 0 else 0
+
+    stats = {"total": total, "real": real, "fake": fake, "accuracy": accuracy}
+
+    preview = get_article_preview(news_content) if news_content else ""
+
+    # If this was the immediate post-registration visit, remove the
+    # one-time flag so subsequent visits require the user to log in.
+    if session.get("just_registered"):
+        session.pop("just_registered", None)
 
     return render_template(
         "dashboard.html",
@@ -202,42 +404,45 @@ def dashboard():
         prediction=prediction,
         confidence=confidence,
         error=error,
+        notice=notice,
+        explanation=explanation,
         stats=stats,
-        news_text=news_content # Returns the text to the textarea if there's an error
+        news_text=news_content,
+        news_url=news_url,
+        preview=preview,
     )
 
-# DELETE the old @app.route('/predict') entirely!
 
-
-@app.route('/admin')
+@app.route("/admin")
 def admin():
-    if 'admin' not in session:
+    if "admin" not in session:
         flash("Unauthorized access!", "error")
-        return redirect('/login')
+        return redirect("/login")
 
     conn = get_db_connection()
-    # Fetch all history and all users for full control
     history_data = conn.execute("SELECT * FROM history ORDER BY id DESC").fetchall()
     users_data = conn.execute("SELECT id, username, email FROM users").fetchall()
     conn.close()
 
-    return render_template('admin.html', history=history_data, users=users_data)
+    return render_template("admin.html", history=history_data, users=users_data)
 
-@app.route('/admin/delete_record/<int:record_id>')
+
+@app.route("/admin/delete_record/<int:record_id>")
 def delete_record(record_id):
-    if 'admin' not in session: return redirect('/login')
-    
+    if "admin" not in session:
+        return redirect("/login")
+
     conn = get_db_connection()
     conn.execute("DELETE FROM history WHERE id = ?", (record_id,))
     conn.commit()
     conn.close()
     flash("Record deleted successfully", "info")
-    return redirect('/admin')
+    return redirect("/admin")
 
-@app.route('/admin/delete_user/<int:user_id>')
+
+@app.route("/admin/delete_user/<int:user_id>")
 def delete_user(user_id):
-    # Use 'users.db' because that is the name in your file explorer
-    conn = sqlite3.connect('users.db', timeout=20) 
+    conn = sqlite3.connect("users.db", timeout=20)
     try:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
@@ -246,56 +451,84 @@ def delete_user(user_id):
         print(f"Database error: {e}")
         return f"Error: {e}", 500
     finally:
-        conn.close() 
-    
-    return redirect('/admin')
+        conn.close()
 
-@app.route('/logout')
+    return redirect("/admin")
+
+
+@app.route("/logout")
 def logout():
-    session.pop('user', None)
-    session.pop('admin', None)
-    return redirect('/login')
+    session.pop("user", None)
+    session.pop("admin", None)
+    session.pop("via_login", None)
+    session.pop("just_registered", None)
+    return redirect("/login")
 
-def is_news(text):
-    # Rule 1: Minimum length check
-    if len(text.split()) < 20:
-        return False
 
-    # Rule 2: Check for news-like keywords
-    news_keywords = ["said", "reported", "government", "minister",
-                     "police", "announced", "according", "election"]
-
-    for word in news_keywords:
-        if word in text.lower():
-            return True
-
-    return False
-
-@app.route('/predict', methods=['POST'])
+@app.route("/predict", methods=["POST"])
 def predict():
-    user_input = request.form['news']
+    user_input = (request.form.get("news", "") or "").strip()
+    url_input = (request.form.get("url", "") or "").strip()
 
-    # 🔹 Check if input is news
-    if not is_news(user_input):
-        return render_template("dashboard.html",
-                               prediction="⚠ This does not appear to be a news article.")
+    if url_input:
+        try:
+            user_input = fetch_article_text(url_input)
+        except Exception as exc:
+            return render_template("dashboard.html", prediction=f"Unable to analyze URL: {exc}")
 
-    # 🔹 If it is news → Continue Fake/Real prediction
-    transformed_input = vectorizer.transform([user_input])
-    prediction = model.predict(transformed_input)
+    if not user_input:
+        return render_template("dashboard.html", prediction="⚠ Please paste article text or provide a valid URL.")
 
-    if prediction[0] == 0:
-        result = "📰 This is Real News"
-    else:
-        result = "🚨 This is Fake News"
+    try:
+        prediction, confidence, explanation, notice = analyze_input(user_input)
+    except ValueError as exc:
+        return render_template("dashboard.html", prediction=f"⚠ {exc}")
 
-    return render_template("dashboard.html", prediction=result)
+    return render_template("dashboard.html", prediction=prediction, confidence=confidence, notice=notice)
+
+
+@app.route('/api/analyze', methods=['POST'])
+def api_analyze():
+    # JSON API for AJAX analysis
+    url_input = (request.form.get('url', '') or '').strip()
+    user_input = (request.form.get('news', '') or '').strip()
+    error = None
+    try:
+        if url_input:
+            user_input = fetch_article_text(url_input)
+        if not user_input:
+            return {'error': 'Please paste article text or provide a valid URL.'}, 400
+        prediction, confidence, explanation, notice = analyze_input(user_input)
+        # save history if user present
+        if 'user' in session and prediction in ('REAL', 'FAKE'):
+            try:
+                conn = get_db_connection()
+                conn.execute(
+                    "INSERT INTO history (username, news, prediction, confidence) VALUES (?, ?, ?, ?)",
+                    (session['user'], user_input[:2000], prediction, confidence),
+                )
+                conn.commit()
+                conn.close()
+            except Exception:
+                pass
+
+        return {
+            'prediction': prediction,
+            'confidence': confidence,
+            'explanation': explanation,
+            'notice': notice,
+            'preview': get_article_preview(user_input)
+        }
+    except Exception as exc:
+        return {'error': f'Unable to analyze this content: {exc}'}, 500
+
 
 @app.route("/metrics")
 def metrics():
     with open("metrics.json") as f:
         data = json.load(f)
     return render_template("metrics.html", accuracy=data["accuracy"])
+
 
 @app.route("/history")
 def history():
@@ -305,17 +538,18 @@ def history():
     conn = get_db_connection()
     records = conn.execute(
         "SELECT * FROM history WHERE username=? ORDER BY id DESC",
-        (session["user"],)
+        (session["user"],),
     ).fetchall()
     conn.close()
 
     return render_template("history.html", records=records)
 
-@app.route('/health')
+
+@app.route("/health")
 def health():
     return "I am awake!", 200
 
-# ---------- RUN ----------
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host="0.0.0.0", port=port)
