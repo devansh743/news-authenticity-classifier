@@ -73,6 +73,18 @@ NEWS_CUES = {
 }
 
 
+def resolve_db_path():
+    configured_path = os.environ.get("DB_PATH")
+    if configured_path:
+        return configured_path
+
+    render_disk_path = os.path.join("/var/data", "users.db")
+    if os.path.isdir("/var/data") or os.path.exists("/var/data"):
+        return render_disk_path
+
+    return os.path.join(BASE_DIR, "users.db")
+
+
 def combine_notices(*messages):
     return " ".join(message for message in messages if message)
 
@@ -97,7 +109,11 @@ def analyze_input(text):
     prediction, confidence, explanation = predict_article(cleaned)
     return prediction, confidence, explanation, combine_notices(*notice_parts)
 
-DB_PATH = os.path.join(BASE_DIR, "users.db")
+DB_PATH = resolve_db_path()
+
+db_dir = os.path.dirname(DB_PATH)
+if db_dir:
+    os.makedirs(db_dir, exist_ok=True)
 
 
 @app.route("/test")
@@ -438,7 +454,7 @@ def delete_record(record_id):
 
 @app.route("/admin/delete_user/<int:user_id>")
 def delete_user(user_id):
-    conn = sqlite3.connect("users.db", timeout=20)
+    conn = get_db_connection()
     try:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()

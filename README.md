@@ -31,6 +31,11 @@ A full-stack Machine Learning application that detects fake news articles with h
 - **Frontend:** HTML5, CSS3 (Modern Flexbox), JavaScript, Chart.js
 - **Deployment:** Render (Production-grade with Gunicorn)
 
+## 💾 Persistent Storage On Render
+SQLite is now configurable through the `DB_PATH` environment variable.
+
+For permanent user storage on Render, set `DB_PATH` to a mounted disk path such as `/var/data/users.db`, or configure a persistent disk and point `DB_PATH` at that location. If `DB_PATH` is not set, the app will use `/var/data/users.db` when a Render disk is available, otherwise it falls back to the local project folder.
+
 ---
 
 ## 📊 Model Performance
