@@ -7,9 +7,6 @@ import re
 from html import unescape
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-
-# Use sentence-transformers for lightweight embeddings in the app
-from sentence_transformers import SentenceTransformer
 from werkzeug.security import generate_password_hash, check_password_hash
 
 ADMIN_EMAIL = "admin@fnd.com"
@@ -21,7 +18,7 @@ MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
 with open(MODEL_PATH, "rb") as f:
     model = pickle.load(f)
 
-# optional legacy vectorizer (used if model expects sparse TF-IDF input)
+# TF-IDF vectorizer used by the saved classifier artifact
 VECT_PATH = os.path.join(BASE_DIR, "vectorizer.pkl")
 vectorizer = None
 if os.path.exists(VECT_PATH):
@@ -30,9 +27,6 @@ if os.path.exists(VECT_PATH):
             vectorizer = pickle.load(vf)
     except Exception:
         vectorizer = None
-
-MODEL_NAME = "all-MiniLM-L6-v2"
-st_model = SentenceTransformer(MODEL_NAME)
 
 app = Flask(__name__)
 app.secret_key = "secretkey123"
@@ -258,11 +252,12 @@ def fetch_article_text(url):
     return " ".join(sentences[:20]) if sentences else cleaned
 
 
-def compute_embeddings(texts, max_length=256):
-    # SentenceTransformer handles batching and returns numpy arrays
+def compute_features(texts):
     if isinstance(texts, str):
         texts = [texts]
-    return st_model.encode(texts, batch_size=32, convert_to_numpy=True)
+    if vectorizer is None:
+        raise RuntimeError("vectorizer.pkl is required for inference")
+    return vectorizer.transform(texts)
 
 
 def predict_article(text):
@@ -270,18 +265,9 @@ def predict_article(text):
     if not cleaned:
         raise ValueError("Text is empty")
 
-    data = compute_embeddings([cleaned])
-    try:
-        result = int(model.predict(data)[0])
-        probabilities = model.predict_proba(data)[0]
-    except Exception:
-        # fallback: if a vectorizer exists, try TF-IDF transform on raw text
-        if vectorizer is not None:
-            vec = vectorizer.transform([cleaned])
-            result = int(model.predict(vec)[0])
-            probabilities = model.predict_proba(vec)[0]
-        else:
-            raise
+    data = compute_features([cleaned])
+    result = int(model.predict(data)[0])
+    probabilities = model.predict_proba(data)[0]
     confidence = round(float(max(probabilities)) * 100, 2)
     prediction = "REAL" if result == 1 else "FAKE"
     # build a lightweight explanation: matched keywords and top words

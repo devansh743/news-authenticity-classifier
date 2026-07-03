@@ -2,14 +2,10 @@ import json
 import pickle
 
 import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
-
-# Use a lightweight sentence-transformers model to avoid large CPU memory use
-from sentence_transformers import SentenceTransformer
-
-MODEL_NAME = "all-MiniLM-L6-v2"
 
 print("Loading dataset...")
 fake = pd.read_csv("dataset/Fake.csv")
@@ -31,18 +27,10 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=df["label"],
 )
 
-print("Loading sentence-transformer model (small, memory efficient)...")
-st_model = SentenceTransformer(MODEL_NAME)
-
-
-def compute_embeddings(texts, batch_size=64):
-    # SentenceTransformer handles batching and converts to numpy directly
-    return st_model.encode(texts, batch_size=batch_size, show_progress_bar=True, convert_to_numpy=True)
-
-
-print("Computing embeddings...")
-X_train_emb = compute_embeddings(X_train.tolist(), batch_size=64)
-X_test_emb = compute_embeddings(X_test.tolist(), batch_size=64)
+print("Fitting TF-IDF vectorizer...")
+vectorizer = TfidfVectorizer(stop_words="english", ngram_range=(1, 2), max_df=0.7)
+X_train_emb = vectorizer.fit_transform(X_train.tolist())
+X_test_emb = vectorizer.transform(X_test.tolist())
 
 print("Training model...")
 model = LogisticRegression(max_iter=2000, class_weight="balanced")
@@ -56,6 +44,9 @@ print(f"✅ Accuracy: {round(accuracy * 100, 2)}%")
 print("Saving model file...")
 with open("model.pkl", "wb") as f:
     pickle.dump(model, f)
+
+with open("vectorizer.pkl", "wb") as f:
+    pickle.dump(vectorizer, f)
 
 with open("metrics.json", "w") as f:
     json.dump({"accuracy": round(accuracy * 100, 2)}, f)
