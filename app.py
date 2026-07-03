@@ -34,6 +34,44 @@ app.secret_key = "secretkey123"
 MIN_ANALYSIS_WORDS = 8
 MIN_RELIABLE_WORDS = 25
 
+NEWS_CUES = {
+    "according",
+    "announced",
+    "article",
+    "byline",
+    "capitol",
+    "ceo",
+    "city",
+    "committee",
+    "company",
+    "court",
+    "economy",
+    "election",
+    "federal",
+    "government",
+    "house",
+    "lawmakers",
+    "london",
+    "market",
+    "minister",
+    "official",
+    "officials",
+    "police",
+    "president",
+    "reuters",
+    "report",
+    "reported",
+    "said",
+    "senate",
+    "state",
+    "supreme",
+    "tax",
+    "trump",
+    "vote",
+    "voted",
+    "washington",
+}
+
 
 def combine_notices(*messages):
     return " ".join(message for message in messages if message)
@@ -207,28 +245,19 @@ def is_news(text):
         return False
 
     lower = cleaned.lower()
-    news_keywords = [
-        "said",
-        "reported",
-        "government",
-        "minister",
-        "police",
-        "announced",
-        "according",
-        "election",
-        "president",
-        "court",
-        "official",
-        "company",
-        "percent",
-        "million",
-        "economy",
-        "health",
-        "war",
-    ]
+    hits = 0
+    for cue in NEWS_CUES:
+        if re.search(rf"\b{re.escape(cue)}\b", lower):
+            hits += 1
 
-    hits = sum(1 for word in news_keywords if word in lower)
-    return hits >= 1
+    sentence_count = len([sentence for sentence in re.split(r"[.!?]+", text) if len(sentence.split()) >= 4])
+    if hits >= 2:
+        return True
+
+    if hits >= 1 and (sentence_count >= 2 or len(words) >= 35):
+        return True
+
+    return False
 
 
 def fetch_article_text(url):
@@ -272,26 +301,7 @@ def predict_article(text):
     prediction = "REAL" if result == 1 else "FAKE"
     # build a lightweight explanation: matched keywords and top words
     lower = cleaned.lower()
-    news_keywords = [
-        "said",
-        "reported",
-        "government",
-        "minister",
-        "police",
-        "announced",
-        "according",
-        "election",
-        "president",
-        "court",
-        "official",
-        "company",
-        "percent",
-        "million",
-        "economy",
-        "health",
-        "war",
-    ]
-    matched = [k for k in news_keywords if k in lower]
+    matched = [cue for cue in sorted(NEWS_CUES) if re.search(rf"\b{re.escape(cue)}\b", lower)]
     # top words (simple frequency, excluding common stopwords)
     stop = set(["the","and","a","to","of","in","for","on","is","that","it","with","as","was","are","be","by","an","this","from","at"])
     words = [w for w in re.findall(r"\w+", lower) if w not in stop]
