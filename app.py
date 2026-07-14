@@ -33,6 +33,7 @@ app.secret_key = "secretkey123"
 
 MIN_ANALYSIS_WORDS = 8
 MIN_RELIABLE_WORDS = 25
+FAKE_PROBABILITY_THRESHOLD = 0.65
 
 NEWS_CUES = {
     "according",
@@ -219,16 +220,19 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form.get("email", "").strip()
+        login_id = request.form.get("email", "").strip()
         password = request.form.get("password", "")
 
-        if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+        if login_id == ADMIN_EMAIL and password == ADMIN_PASSWORD:
             session.clear()
             session["admin"] = True
             return redirect("/admin")
 
         conn = get_db_connection()
-        user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        user = conn.execute(
+            "SELECT * FROM users WHERE email = ? OR username = ?",
+            (login_id, login_id),
+        ).fetchone()
         conn.close()
 
         if user and check_password_hash(user["password"], password):
@@ -311,10 +315,23 @@ def predict_article(text):
         raise ValueError("Text is empty")
 
     data = compute_features([cleaned])
-    result = int(model.predict(data)[0])
     probabilities = model.predict_proba(data)[0]
-    confidence = round(float(max(probabilities)) * 100, 2)
-    prediction = "REAL" if result == 1 else "FAKE"
+    classes = list(getattr(model, "classes_", []))
+    if 0 in classes and 1 in classes:
+        fake_index = classes.index(0)
+        real_index = classes.index(1)
+        fake_probability = float(probabilities[fake_index])
+        real_probability = float(probabilities[real_index])
+        if fake_probability >= FAKE_PROBABILITY_THRESHOLD and fake_probability > real_probability:
+            prediction = "FAKE"
+            confidence = round(fake_probability * 100, 2)
+        else:
+            prediction = "REAL"
+            confidence = round(real_probability * 100, 2)
+    else:
+        result = int(model.predict(data)[0])
+        confidence = round(float(max(probabilities)) * 100, 2)
+        prediction = "REAL" if result == 1 else "FAKE"
     # build a lightweight explanation: matched keywords and top words
     lower = cleaned.lower()
     matched = [cue for cue in sorted(NEWS_CUES) if re.search(rf"\b{re.escape(cue)}\b", lower)]

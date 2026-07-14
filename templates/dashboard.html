@@ -21,19 +21,19 @@
     <div class="stats-grid">
         <div class="stat-card total">
             <h4>Total Predictions</h4>
-            <p>{{ stats.total }}</p>
+            <p id="stat-total">{{ stats.total }}</p>
         </div>
         <div class="stat-card real">
             <h4>Real News</h4>
-            <p>{{ stats.real }}</p>
+            <p id="stat-real">{{ stats.real }}</p>
         </div>
         <div class="stat-card fake">
             <h4>Fake News</h4>
-            <p>{{ stats.fake }}</p>
+            <p id="stat-fake">{{ stats.fake }}</p>
         </div>
         <div class="stat-card acc">
             <h4>Accuracy</h4>
-            <p>{{ stats.accuracy }}%</p>
+            <p id="stat-accuracy">{{ stats.accuracy }}%</p>
         </div>
     </div>
 
@@ -107,8 +107,13 @@
 <script>
     const stats = JSON.parse('{{ stats | tojson | safe }}');
     const ctx = document.getElementById("statsChart").getContext('2d');
+    const statTotal = document.getElementById('stat-total');
+    const statReal = document.getElementById('stat-real');
+    const statFake = document.getElementById('stat-fake');
+    const statAccuracy = document.getElementById('stat-accuracy');
+    const totalState = { total: stats.total, real: stats.real, fake: stats.fake };
 
-    new Chart(ctx, {
+    const statsChart = new Chart(ctx, {
         type: "doughnut",
         data: {
             labels: ["Real", "Fake"],
@@ -120,6 +125,27 @@
             }]
         },
         options: {
+
+            if (pred === 'REAL' || pred === 'FAKE') {
+                totalState.total += 1;
+                if (pred === 'REAL') {
+                    totalState.real += 1;
+                } else {
+                    totalState.fake += 1;
+                }
+
+                const accuracy = totalState.total > 0
+                    ? Math.round((totalState.real / totalState.total) * 10000) / 100
+                    : 0;
+
+                statTotal.textContent = totalState.total;
+                statReal.textContent = totalState.real;
+                statFake.textContent = totalState.fake;
+                statAccuracy.textContent = `${accuracy}%`;
+
+                statsChart.data.datasets[0].data = [totalState.real, totalState.fake];
+                statsChart.update();
+            }
             responsive: true,
             maintainAspectRatio: false,
             plugins: {

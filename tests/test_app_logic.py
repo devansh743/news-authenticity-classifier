@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch
 
 import app
+from werkzeug.security import generate_password_hash
 
 
 class AppLogicTests(unittest.TestCase):
@@ -69,6 +70,21 @@ class AppLogicTests(unittest.TestCase):
         self.assertIn("real/fake verdict was forced", payload["notice"].lower())
         mock_predict_article.assert_not_called()
 
+    @patch("app.compute_features")
+    @patch("app.model")
+    def test_predict_article_prefers_real_when_fake_probability_is_below_threshold(self, mock_model, mock_compute_features):
+        mock_compute_features.return_value = [[0]]
+        mock_model.classes_ = [0, 1]
+        mock_model.predict_proba.return_value = [[0.64, 0.36]]
+
+        prediction, confidence, explanation = app.predict_article(
+            "Officials announced a new infrastructure plan with updated contracts for city transit projects across several districts."
+        )
+
+        self.assertEqual(prediction, "REAL")
+        self.assertEqual(confidence, 36.0)
+        self.assertIsInstance(explanation, dict)
+
     @patch("app.get_db_connection")
     def test_register_logs_user_in_after_success(self, mock_get_db_connection):
         class FakeConn:
@@ -88,6 +104,49 @@ class AppLogicTests(unittest.TestCase):
             data={"username": "alice", "email": "alice@example.com", "password": "secret123"},
         ):
             response = app.register()
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(app.session.get("user"), "alice")
+
+    @patch("app.get_db_connection")
+    def test_login_accepts_username_or_email(self, mock_get_db_connection):
+        class FakeConn:
+            def __init__(self):
+                self.user = {
+                    "username": "alice",
+                    "email": "alice@example.com",
+                    "password": generate_password_hash("secret123"),
+                }
+
+            def execute(self, query, params):
+                if "FROM users" in query:
+                    if params[0] in ("alice", "alice@example.com") or params[1] in ("alice", "alice@example.com"):
+                        return self
+                    return self
+                return self
+
+            def fetchone(self):
+                return self.user
+
+            def close(self):
+                return None
+
+        mock_get_db_connection.return_value = FakeConn()
+
+        with app.app.test_request_context(
+            "/login",
+            method="POST",
+            data={"email": "alice", "password": "secret123"},
+        ):
+            response = app.login()
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(app.session.get("user"), "alice")
+
+        with app.app.test_request_context(
+            "/login",
+            method="POST",
+            data={"email": "alice@example.com", "password": "secret123"},
+        ):
+            response = app.login()
             self.assertEqual(response.status_code, 302)
             self.assertEqual(app.session.get("user"), "alice")
 
