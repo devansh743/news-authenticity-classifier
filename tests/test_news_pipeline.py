@@ -59,36 +59,34 @@ class NewsPipelineTests(unittest.TestCase):
             timeout=10
         )
 
-    def test_fetch_live_news_missing_key(self):
-        with self.assertRaises(RuntimeError) as context:
-            news_pipeline.fetch_live_news("election")
-        self.assertIn("GNews API Key is missing", str(context.exception))
+    @patch("news_pipeline.fetch_from_google_news_rss")
+    def test_fetch_live_news_rss_fallback_when_key_missing(self, mock_rss):
+        mock_rss.return_value = {
+            "title": "RSS News Article",
+            "description": "RSS content",
+            "content": "RSS content",
+            "url": "https://example.com/rss",
+            "source": {"name": "Google News", "url": "https://example.com/rss"}
+        }
 
-    @patch("news_pipeline.requests.get")
-    def test_fetch_live_news_no_articles(self, mock_get):
-        os.environ["NEWS_API_KEY"] = "fake_news_key"
+        article = news_pipeline.fetch_live_news("election")
+        self.assertEqual(article["title"], "RSS News Article")
+        mock_rss.assert_called_once_with("election")
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"articles": []}
-        mock_get.return_value = mock_response
+    @patch("news_pipeline.fetch_article_from_url")
+    def test_fetch_live_news_with_url_input(self, mock_fetch_url):
+        mock_fetch_url.return_value = {
+            "title": "BBC News Article",
+            "description": "Article text...",
+            "content": "Full text...",
+            "url": "https://www.bbc.com/news/articles/c4gknzgje7go",
+            "source": {"name": "Bbc", "url": "https://www.bbc.com/news/articles/c4gknzgje7go"}
+        }
 
-        with self.assertRaises(ValueError) as context:
-            news_pipeline.fetch_live_news("nothing_here")
-        self.assertIn("No news articles found", str(context.exception))
-
-    @patch("news_pipeline.requests.get")
-    def test_fetch_live_news_error_status(self, mock_get):
-        os.environ["GNEWS_API_KEY"] = "fake_gnews_key"
-
-        mock_response = MagicMock()
-        mock_response.status_code = 403
-        mock_response.text = "Forbidden / Invalid Key"
-        mock_get.return_value = mock_response
-
-        with self.assertRaises(RuntimeError) as context:
-            news_pipeline.fetch_live_news("election")
-        self.assertIn("returned status code 403", str(context.exception))
+        url_input = "https://www.bbc.com/news/articles/c4gknzgje7go"
+        article = news_pipeline.fetch_live_news(url_input)
+        self.assertEqual(article["title"], "BBC News Article")
+        mock_fetch_url.assert_called_once_with(url_input)
 
     def test_format_article_for_analysis_dict(self):
         article = {
@@ -110,7 +108,6 @@ class NewsPipelineTests(unittest.TestCase):
     def test_analyze_news_with_gemini_success(self, mock_client_class):
         os.environ["GEMINI_API_KEY"] = "fake_gemini_key"
 
-        # Setup mock client chain: client.models.generate_content(...)
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = "Trust Score: 9/10\nReason: Verifiable facts."
@@ -123,22 +120,19 @@ class NewsPipelineTests(unittest.TestCase):
         mock_client.models.generate_content.assert_called_once()
         self.assertIn("Trust Score: 9/10", result)
 
-    def test_analyze_news_with_gemini_missing_key(self):
+    def test_analyze_news_with_gemini_fallback_when_key_missing(self):
+        def fake_local_fallback(text):
+            return ("REAL", 92.0, {"keywords": ["announced"], "top_words": ["election"]}, None)
+
+        result = news_pipeline.analyze_news_with_gemini("News text", local_fallback_fn=fake_local_fallback)
+        self.assertIn("Trust Score: 9.2/10", result)
+        self.assertIn("Verdict: REAL", result)
+
+    def test_analyze_news_with_gemini_missing_key_no_fallback(self):
         with self.assertRaises(RuntimeError) as context:
             news_pipeline.analyze_news_with_gemini("Some text")
         self.assertIn("Gemini API Key is missing", str(context.exception))
 
-    @patch("news_pipeline.genai.Client")
-    def test_analyze_news_with_gemini_failure(self, mock_client_class):
-        os.environ["GEMINI_API_KEY"] = "fake_gemini_key"
-
-        mock_client = MagicMock()
-        mock_client.models.generate_content.side_effect = Exception("API Quota Exceeded")
-        mock_client_class.return_value = mock_client
-
-        with self.assertRaises(RuntimeError) as context:
-            news_pipeline.analyze_news_with_gemini("Some text")
-        self.assertIn("Gemini API call failed", str(context.exception))
-
 if __name__ == "__main__":
     unittest.main()
+

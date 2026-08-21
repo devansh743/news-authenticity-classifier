@@ -275,11 +275,11 @@
             <!-- Tab 2: Live AI Scanner -->
             <div id="live-ai-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-live" style="display: none;">
                 <h3>Live AI News Scanner</h3>
-                <p class="dash-subtitle">Enter a keyword to fetch the latest breaking article from GNews and evaluate it with Gemini AI.</p>
+                <p class="dash-subtitle">Enter a keyword or paste a live news article URL to fetch and evaluate with AI.</p>
                 <form id="liveAiForm" onsubmit="runLiveAiScan(); return false;">
                     <input type="text" name="keyword" id="liveAiKeyword" class="news-box"
                            style="margin-bottom: 10px; min-height: 50px;"
-                           placeholder="Enter keyword or topic (e.g. election, tech, climate)"
+                           placeholder="Enter keyword (e.g. election, tech) or paste article URL (https://...)"
                            required>
                     <button type="submit" class="primary-btn" id="liveAiBtn">
                         ⚡ Fetch &amp; AI-Analyze

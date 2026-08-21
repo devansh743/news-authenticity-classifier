@@ -603,15 +603,15 @@ def api_analyze():
 @app.route('/api/live-news-analyze', methods=['POST'])
 def api_live_news_analyze():
     payload = request.get_json(silent=True) or {}
-    keyword = (payload.get('keyword') or request.form.get('keyword') or 'election').strip()
+    keyword = (payload.get('keyword') or request.form.get('keyword') or '').strip()
 
     if not keyword:
-        return {'error': 'Please provide a keyword.'}, 400
+        return {'error': 'Please provide a keyword or article URL.'}, 400
 
     try:
         article = fetch_live_news(keyword)
         news_text = format_article_for_analysis(article)
-        analysis = analyze_news_with_gemini(news_text)
+        analysis = analyze_news_with_gemini(news_text, local_fallback_fn=predict_article)
 
         return {
             'keyword': keyword,
