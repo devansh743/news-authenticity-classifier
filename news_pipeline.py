@@ -244,18 +244,44 @@ News to analyze:
     # Fallback to local NLP classifier if Gemini key is absent or failed
     if local_fallback_fn:
         try:
-            pred, conf, exp, notice = local_fallback_fn(news_text)
-            trust_score = round(conf / 10, 1) if pred == "REAL" else round((100 - conf) / 10, 1)
-            matched_sigs = ", ".join(exp.get("keywords", [])) if exp and exp.get("keywords") else "None"
-            top_words = ", ".join(exp.get("top_words", [])) if exp and exp.get("top_words") else "None"
-            
+            res = local_fallback_fn(news_text)
+            notice = None
+            if isinstance(res, (tuple, list)):
+                if len(res) >= 4:
+                    pred, conf, exp, notice = res[0], res[1], res[2], res[3]
+                elif len(res) == 3:
+                    pred, conf, exp = res[0], res[1], res[2]
+                else:
+                    pred, conf, exp = "UNKNOWN", None, {}
+            else:
+                pred, conf, exp = "UNKNOWN", None, {}
+
+            if conf is not None:
+                trust_score = round(conf / 10, 1) if pred == "REAL" else round((100 - conf) / 10, 1)
+                conf_str = f"{conf}%"
+            else:
+                trust_score = 5.0 if pred == "REAL" else (0.0 if pred == "FAKE" else 5.0)
+                conf_str = "N/A"
+
+            matched_sigs = (
+                ", ".join(exp.get("keywords", []))
+                if isinstance(exp, dict) and exp.get("keywords")
+                else "None"
+            )
+            top_words = (
+                ", ".join(exp.get("top_words", []))
+                if isinstance(exp, dict) and exp.get("top_words")
+                else "None"
+            )
+            notice_str = f"\n• Notice: {notice}" if notice else ""
+
             return (
                 f"Trust Score: {trust_score}/10\n\n"
                 f"NLP Classifier Evaluation:\n"
-                f"• Verdict: {pred} ({conf}% confidence)\n"
+                f"• Verdict: {pred} ({conf_str} confidence)\n"
                 f"• Matched News Signals: {matched_sigs}\n"
-                f"• Key Keywords: {top_words}\n"
-                f"{notice if notice else ''}"
+                f"• Key Keywords: {top_words}"
+                f"{notice_str}"
             )
         except Exception as fallback_exc:
             raise RuntimeError(f"Analysis failed: {fallback_exc}")
