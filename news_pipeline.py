@@ -1,7 +1,7 @@
 import os
 import sys
 import requests
-import google.generativeai as genai
+from google import genai
 
 # Load environment variables from local .env file if it exists
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -13,6 +13,7 @@ if os.path.exists(env_path):
                 k, v = line.split("=", 1)
                 os.environ[k.strip()] = v.strip()
 
+
 def fetch_live_news(keyword):
     """
     Fetches the latest article matching the keyword from GNews API.
@@ -21,7 +22,9 @@ def fetch_live_news(keyword):
     """
     api_key = os.environ.get("GNEWS_API_KEY") or os.environ.get("NEWS_API_KEY")
     if not api_key:
-        raise RuntimeError("GNews API Key is missing. Please set the GNEWS_API_KEY or NEWS_API_KEY environment variable.")
+        raise RuntimeError(
+            "GNews API Key is missing. Please set the GNEWS_API_KEY or NEWS_API_KEY environment variable."
+        )
 
     url = f"https://gnews.io/api/v4/search?q={keyword}&lang=en&apikey={api_key}"
     try:
@@ -30,7 +33,9 @@ def fetch_live_news(keyword):
         raise RuntimeError(f"GNews API request failed: {exc}")
 
     if response.status_code != 200:
-        raise RuntimeError(f"GNews API returned status code {response.status_code}: {response.text}")
+        raise RuntimeError(
+            f"GNews API returned status code {response.status_code}: {response.text}"
+        )
 
     data = response.json()
     articles = data.get("articles", [])
@@ -65,27 +70,30 @@ def format_article_for_analysis(article):
 
 def analyze_news_with_gemini(news_text):
     """
-    Sends the article content to Gemini 1.5 Flash to evaluate for misinformation.
+    Sends the article content to Gemini to evaluate for misinformation.
+    Uses the new google-genai SDK.
     Raises RuntimeError if GEMINI_API_KEY is missing or the API call fails.
     """
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        raise RuntimeError("Gemini API Key is missing. Please set the GEMINI_API_KEY environment variable.")
+        raise RuntimeError(
+            "Gemini API Key is missing. Please set the GEMINI_API_KEY environment variable."
+        )
 
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-        
-        prompt = f"""
-        Analyze this news snippet for potential misinformation. 
-        Look for sensationalism, logical fallacies, or missing context.
-        Provide a trust score out of 10 and a 1-sentence reason.
-        
-        News to analyze:
-        {news_text}
-        """
-        
-        response = model.generate_content(prompt)
+        client = genai.Client(api_key=api_key)
+
+        prompt = f"""Analyze this news snippet for potential misinformation.
+Look for sensationalism, logical fallacies, or missing context.
+Provide a trust score out of 10 (format: "Trust Score: X/10") and a brief explanation.
+
+News to analyze:
+{news_text}
+"""
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=prompt,
+        )
         return response.text
     except Exception as exc:
         raise RuntimeError(f"Gemini API call failed: {exc}")
@@ -102,7 +110,7 @@ if __name__ == "__main__":
         article = fetch_live_news(keyword)
         print(f"Fetched Article Title: {article.get('title')}")
         print(f"Source: {article.get('source', {}).get('name')} | URL: {article.get('url')}")
-        
+
         news_text = format_article_for_analysis(article)
         print("\n--- FORMATTED TEXT FOR ANALYSIS ---")
         print(news_text)

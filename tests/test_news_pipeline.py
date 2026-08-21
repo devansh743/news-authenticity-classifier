@@ -35,7 +35,7 @@ class NewsPipelineTests(unittest.TestCase):
     @patch("news_pipeline.requests.get")
     def test_fetch_live_news_success(self, mock_get):
         os.environ["GNEWS_API_KEY"] = "fake_gnews_key"
-        
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -67,7 +67,7 @@ class NewsPipelineTests(unittest.TestCase):
     @patch("news_pipeline.requests.get")
     def test_fetch_live_news_no_articles(self, mock_get):
         os.environ["NEWS_API_KEY"] = "fake_news_key"
-        
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"articles": []}
@@ -80,7 +80,7 @@ class NewsPipelineTests(unittest.TestCase):
     @patch("news_pipeline.requests.get")
     def test_fetch_live_news_error_status(self, mock_get):
         os.environ["GNEWS_API_KEY"] = "fake_gnews_key"
-        
+
         mock_response = MagicMock()
         mock_response.status_code = 403
         mock_response.text = "Forbidden / Invalid Key"
@@ -106,23 +106,21 @@ class NewsPipelineTests(unittest.TestCase):
         formatted = news_pipeline.format_article_for_analysis(raw_text)
         self.assertEqual(formatted, raw_text)
 
-    @patch("news_pipeline.genai.GenerativeModel")
-    @patch("news_pipeline.genai.configure")
-    def test_analyze_news_with_gemini_success(self, mock_configure, mock_model_class):
+    @patch("news_pipeline.genai.Client")
+    def test_analyze_news_with_gemini_success(self, mock_client_class):
         os.environ["GEMINI_API_KEY"] = "fake_gemini_key"
-        
-        # Setup mock model and response
-        mock_model = MagicMock()
+
+        # Setup mock client chain: client.models.generate_content(...)
+        mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = "Trust Score: 9/10\nReason: Verifiable facts."
-        mock_model.generate_content.return_value = mock_response
-        mock_model_class.return_value = mock_model
+        mock_client.models.generate_content.return_value = mock_response
+        mock_client_class.return_value = mock_client
 
         result = news_pipeline.analyze_news_with_gemini("News text to evaluate.")
-        
-        mock_configure.assert_called_once_with(api_key="fake_gemini_key")
-        mock_model_class.assert_called_once_with("gemini-1.5-flash")
-        mock_model.generate_content.assert_called_once()
+
+        mock_client_class.assert_called_once_with(api_key="fake_gemini_key")
+        mock_client.models.generate_content.assert_called_once()
         self.assertIn("Trust Score: 9/10", result)
 
     def test_analyze_news_with_gemini_missing_key(self):
@@ -130,14 +128,13 @@ class NewsPipelineTests(unittest.TestCase):
             news_pipeline.analyze_news_with_gemini("Some text")
         self.assertIn("Gemini API Key is missing", str(context.exception))
 
-    @patch("news_pipeline.genai.GenerativeModel")
-    @patch("news_pipeline.genai.configure")
-    def test_analyze_news_with_gemini_failure(self, mock_configure, mock_model_class):
+    @patch("news_pipeline.genai.Client")
+    def test_analyze_news_with_gemini_failure(self, mock_client_class):
         os.environ["GEMINI_API_KEY"] = "fake_gemini_key"
-        
-        mock_model = MagicMock()
-        mock_model.generate_content.side_effect = Exception("API Quota Exceeded")
-        mock_model_class.return_value = mock_model
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = Exception("API Quota Exceeded")
+        mock_client_class.return_value = mock_client
 
         with self.assertRaises(RuntimeError) as context:
             news_pipeline.analyze_news_with_gemini("Some text")
