@@ -65,8 +65,8 @@ pip install -r requirements.txt
 Create a `.env` file in the project root (never commit this file):
 
 ```env
-GNEWS_API_KEY=your_gnews_api_key_here
-GEMINI_API_KEY=your_gemini_api_key_here
+GNEWS_API_KEY
+GEMINI_API_KEY
 ```
 
 | Key | Where to get it |
