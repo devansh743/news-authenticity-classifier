@@ -245,6 +245,16 @@
                             <div class="notice-badge">Heads up</div>
                             <p class="result-note notice-text">{{ notice }}</p>
                             {% endif %}
+                            {% if explanation and (explanation.keywords or explanation.top_words) %}
+                            <div style="margin-top: 14px; background: #f8fafc; padding: 12px 14px; border-radius: 10px; border: 1px dashed var(--border); font-size: 0.85rem; color: var(--text-muted);">
+                                {% if explanation.keywords %}
+                                <div><strong>Matched News Signals:</strong> {{ explanation.keywords | join(', ') }}</div>
+                                {% endif %}
+                                {% if explanation.top_words %}
+                                <div style="margin-top: 4px;"><strong>Key Words Extracted:</strong> {{ explanation.top_words | join(', ') }}</div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
                             <p class="result-note">Suggestion: Cross-check the article source, verify author/byline, and consult multiple reputable outlets before sharing.</p>
                         </div>
                     </div>
@@ -266,12 +276,12 @@
             <div id="live-ai-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-live" style="display: none;">
                 <h3>Live AI News Scanner</h3>
                 <p class="dash-subtitle">Enter a keyword to fetch the latest breaking article from GNews and evaluate it with Gemini AI.</p>
-                <form id="liveAiForm" onsubmit="return false;">
+                <form id="liveAiForm" onsubmit="runLiveAiScan(); return false;">
                     <input type="text" name="keyword" id="liveAiKeyword" class="news-box"
                            style="margin-bottom: 10px; min-height: 50px;"
                            placeholder="Enter keyword or topic (e.g. election, tech, climate)"
                            required>
-                    <button type="button" class="primary-btn" id="liveAiBtn" onclick="runLiveAiScan()">
+                    <button type="submit" class="primary-btn" id="liveAiBtn">
                         ⚡ Fetch &amp; AI-Analyze
                     </button>
                 </form>
@@ -286,6 +296,150 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+/* Global functions for tab switching & live scan */
+function switchTab(clickedBtn, tabId) {
+    if (typeof clickedBtn === 'string') { tabId = clickedBtn; clickedBtn = null; }
+
+    document.querySelectorAll('.tab-content').forEach(function (el) {
+        el.style.display = 'none';
+        el.classList.remove('active');
+        el.setAttribute('aria-hidden', 'true');
+    });
+    document.querySelectorAll('.tab-btn').forEach(function (btn) {
+        btn.classList.remove('active');
+        btn.setAttribute('aria-selected', 'false');
+    });
+
+    var activeTab = document.getElementById(tabId);
+    if (activeTab) {
+        activeTab.style.display = 'block';
+        void activeTab.offsetWidth; // force reflow for animation
+        activeTab.classList.add('active');
+        activeTab.setAttribute('aria-hidden', 'false');
+    }
+
+    var btn = clickedBtn || document.querySelector('.tab-btn[aria-controls="' + tabId + '"]');
+    if (btn) {
+        btn.classList.add('active');
+        btn.setAttribute('aria-selected', 'true');
+    }
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function errorCard(title, message) {
+    return '<div class="result-card fake"><div class="result-head">' +
+           '<span class="result-badge badge-fake">ERROR</span>' +
+           '<div class="result-title">' + escHtml(title) + '</div></div>' +
+           '<p class="result-note">' + escHtml(message) + '</p></div>';
+}
+
+async function runLiveAiScan() {
+    var btn         = document.getElementById('liveAiBtn');
+    var resultPanel = document.getElementById('live-ai-result-panel');
+    var keywordInput= document.getElementById('liveAiKeyword');
+    var keyword     = (keywordInput ? keywordInput.value : '').trim();
+
+    if (!keyword) { return; }
+
+    btn.innerHTML  = '<span class="loader"></span> Scanning &amp; Evaluating…';
+    btn.disabled   = true;
+    resultPanel.innerHTML = '';
+
+    try {
+        var resp = await fetch('/api/live-news-analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keyword: keyword })
+        });
+        var data = await resp.json();
+
+        if (!resp.ok || data.error) {
+            resultPanel.innerHTML = errorCard('Scan Failed', data.error || 'Failed to fetch and analyze news.');
+            return;
+        }
+
+        /* Parse trust score: "Trust Score: 8/10" or "8/10" anywhere */
+        var analysisText = data.analysis || '';
+        var scoreVal     = null;
+        var scoreMatch   = analysisText.match(/(?:trust\s*score|score|rating)\s*:\s*(\d+)\s*(?:\/\s*10)?/i)
+                        || analysisText.match(/\b(\d+)\s*\/\s*10\b/);
+        if (scoreMatch) {
+            scoreVal = Math.min(parseInt(scoreMatch[1], 10), 10);
+        }
+
+        var scorePercent = scoreVal !== null ? scoreVal * 10 : 0;
+        var isHigh       = scoreVal !== null && scoreVal >= 7;
+        var isMid        = scoreVal !== null && scoreVal >= 4 && scoreVal < 7;
+        var scoreColor   = isHigh ? '#22c55e' : isMid ? '#eab308' : '#ef4444';
+        var barColor     = isHigh ? 'linear-gradient(90deg,#16a34a,#22c55e)'
+                         : isMid  ? 'linear-gradient(90deg,#eab308,#facc15)'
+                         : 'linear-gradient(90deg,#ef4444,#f43f5e)';
+        var cardClass    = isHigh ? 'real' : isMid ? 'neutral' : 'fake';
+        var badgeClass   = isHigh ? 'badge-real' : isMid ? 'badge-neutral' : 'badge-fake';
+        var scoreLabel   = scoreVal !== null ? scoreVal + '/10' : 'N/A';
+
+        var art        = data.article   || {};
+        var sourceName = (art.source && art.source.name) ? escHtml(art.source.name) : 'Unknown Source';
+        var artUrl     = escHtml(art.url   || '#');
+        var artTitle   = escHtml(art.title || 'Untitled Article');
+        var artDesc    = escHtml(art.description || 'No description available.');
+
+        resultPanel.innerHTML =
+            '<div class="result-card ' + cardClass + '">' +
+              '<div class="result-head">' +
+                '<span class="result-badge ' + badgeClass + '">AI EVALUATION</span>' +
+                '<div class="result-title">Gemini Verification Result</div>' +
+              '</div>' +
+
+              '<div class="article-info-card">' +
+                '<h4>' + artTitle + '</h4>' +
+                '<p>' + artDesc + '</p>' +
+                '<div class="article-meta">' +
+                  '<span>Source: <strong>' + sourceName + '</strong></span>' +
+                  '<a href="' + artUrl + '" target="_blank" rel="noopener noreferrer">' +
+                    'Read Original Article ↗' +
+                  '</a>' +
+                '</div>' +
+              '</div>' +
+
+              '<div class="ai-score-row" style="border-left-color:' + scoreColor + '">' +
+                '<div class="ai-score-label">AI Trust Score:</div>' +
+                '<div class="ai-score-val" style="color:' + scoreColor + '">' + scoreLabel + '</div>' +
+                '<div class="ai-score-bar-outer">' +
+                  '<div class="ai-score-bar-inner" id="score-bar-fill" style="background:' + barColor + '"></div>' +
+                '</div>' +
+              '</div>' +
+
+              '<div class="reason-text">' +
+                '<strong>AI Analysis Report:</strong>' +
+                '<p>' + escHtml(analysisText).replace(/\n/g, '<br>') + '</p>' +
+              '</div>' +
+            '</div>';
+
+        /* Animate bar after paint */
+        setTimeout(function () {
+            var bar = document.getElementById('score-bar-fill');
+            if (bar) { bar.style.width = scorePercent + '%'; }
+        }, 80);
+
+        resultPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    } catch (err) {
+        resultPanel.innerHTML = errorCard('Network Error', 'Unable to connect to the analysis service. Please check your connection and try again.');
+    } finally {
+        btn.innerHTML = '⚡ Fetch &amp; AI-Analyze';
+        btn.disabled  = false;
+    }
+}
+
 (function () {
     /* ── Stats chart ───────────────────────────────────────────── */
     const stats      = {{ stats | tojson }};
@@ -296,16 +450,21 @@
     const statFake     = document.getElementById('stat-fake');
     const statAccuracy = document.getElementById('stat-accuracy');
 
+    const hasData = totalState.real > 0 || totalState.fake > 0;
+    const initialChartData = hasData ? [totalState.real, totalState.fake] : [1];
+    const initialColors    = hasData ? ['#22c55e', '#ef4444'] : ['#e2e8f0'];
+    const initialLabels    = hasData ? ['Real', 'Fake'] : ['No Data'];
+
     const statsChart = new Chart(
         document.getElementById('statsChart').getContext('2d'),
         {
             type: 'doughnut',
             data: {
-                labels: ['Real', 'Fake'],
+                labels: initialLabels,
                 datasets: [{
-                    data: [stats.real, stats.fake],
-                    backgroundColor: ['#22c55e', '#ef4444'],
-                    hoverOffset: 4,
+                    data: initialChartData,
+                    backgroundColor: initialColors,
+                    hoverOffset: hasData ? 4 : 0,
                     borderWidth: 0
                 }]
             },
@@ -325,41 +484,15 @@
         statReal.textContent     = totalState.real;
         statFake.textContent     = totalState.fake;
         statAccuracy.textContent = accuracy + '%';
-        statsChart.data.datasets[0].data = [totalState.real, totalState.fake];
+
+        const currentHasData = totalState.real > 0 || totalState.fake > 0;
+        statsChart.data.labels = currentHasData ? ['Real', 'Fake'] : ['No Data'];
+        statsChart.data.datasets[0].data = currentHasData ? [totalState.real, totalState.fake] : [1];
+        statsChart.data.datasets[0].backgroundColor = currentHasData ? ['#22c55e', '#ef4444'] : ['#e2e8f0'];
+        statsChart.data.datasets[0].hoverOffset = currentHasData ? 4 : 0;
         statsChart.update();
     }
     updateStatsDisplay();
-
-    /* ── Tab switching ─────────────────────────────────────────── */
-    function switchTab(clickedBtn, tabId) {
-        // Support being called as switchTab('tabId') too
-        if (typeof clickedBtn === 'string') { tabId = clickedBtn; clickedBtn = null; }
-
-        document.querySelectorAll('.tab-content').forEach(function (el) {
-            el.style.display = 'none';
-            el.classList.remove('active');
-            el.setAttribute('aria-hidden', 'true');
-        });
-        document.querySelectorAll('.tab-btn').forEach(function (btn) {
-            btn.classList.remove('active');
-            btn.setAttribute('aria-selected', 'false');
-        });
-
-        var activeTab = document.getElementById(tabId);
-        if (activeTab) {
-            activeTab.style.display = 'block';
-            void activeTab.offsetWidth; // force reflow for animation
-            activeTab.classList.add('active');
-            activeTab.setAttribute('aria-hidden', 'false');
-        }
-
-        var btn = clickedBtn || document.querySelector('.tab-btn[aria-controls="' + tabId + '"]');
-        if (btn) {
-            btn.classList.add('active');
-            btn.setAttribute('aria-selected', 'true');
-        }
-    }
-    window.switchTab = switchTab;
 
     /* ── NLP Classifier form (AJAX) ────────────────────────────── */
     var analyzeForm = document.getElementById('analyzeForm');
@@ -410,6 +543,7 @@
         var pred        = data.prediction || 'UNKNOWN';
         var conf        = data.confidence;
         var notice      = data.notice;
+        var exp         = data.explanation;
         var cardClass   = pred === 'REAL' ? 'real'      : pred === 'FAKE' ? 'fake'      : 'neutral';
         var badgeClass  = pred === 'REAL' ? 'badge-real': pred === 'FAKE' ? 'badge-fake': 'badge-neutral';
         var title       = pred === 'REAL' ? 'Likely Real News' : pred === 'FAKE' ? 'Likely Fake News' : 'Not Enough News Context';
@@ -425,6 +559,18 @@
             ? '<div class="notice-badge">Heads up</div><p class="result-note notice-text">' + escHtml(notice) + '</p>'
             : '';
 
+        var expHtml = '';
+        if (exp && ((exp.keywords && exp.keywords.length) || (exp.top_words && exp.top_words.length))) {
+            expHtml = '<div style="margin-top:14px; background:#f8fafc; padding:12px 14px; border-radius:10px; border:1px dashed var(--border); font-size:0.85rem; color:var(--text-muted);">';
+            if (exp.keywords && exp.keywords.length) {
+                expHtml += '<div><strong>Matched News Signals:</strong> ' + escHtml(exp.keywords.join(', ')) + '</div>';
+            }
+            if (exp.top_words && exp.top_words.length) {
+                expHtml += '<div style="margin-top:4px;"><strong>Key Words Extracted:</strong> ' + escHtml(exp.top_words.join(', ')) + '</div>';
+            }
+            expHtml += '</div>';
+        }
+
         if (pred === 'REAL' || pred === 'FAKE') {
             totalState.total += 1;
             totalState[pred === 'REAL' ? 'real' : 'fake'] += 1;
@@ -437,141 +583,27 @@
                 '<span class="result-badge ' + badgeClass + '">' + escHtml(pred) + '</span>' +
                 '<div class="result-title">' + title + '</div>' +
               '</div>' +
-              confHtml + noticeHtml +
+              confHtml + noticeHtml + expHtml +
               '<p class="result-note">Suggestion: Cross-check the article source, verify author/byline, and consult multiple reputable outlets before sharing.</p>' +
             '</div>';
 
         container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
-    /* ── Live AI Scanner ───────────────────────────────────────── */
-    async function runLiveAiScan() {
-        var btn         = document.getElementById('liveAiBtn');
-        var resultPanel = document.getElementById('live-ai-result-panel');
-        var keyword     = (document.getElementById('liveAiKeyword').value || '').trim();
-
-        if (!keyword) { return; }
-
-        btn.innerHTML  = '<span class="loader"></span> Scanning &amp; Evaluating…';
-        btn.disabled   = true;
-        resultPanel.innerHTML = '';
-
-        try {
-            var resp = await fetch('/api/live-news-analyze', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ keyword: keyword })
-            });
-            var data = await resp.json();
-
-            if (!resp.ok || data.error) {
-                resultPanel.innerHTML = errorCard('Scan Failed', data.error || 'Failed to fetch and analyze news.');
-                return;
-            }
-
-            /* Parse trust score: "Trust Score: 8/10" or "8/10" anywhere */
-            var analysisText = data.analysis || '';
-            var scoreVal     = null;
-            var scoreMatch   = analysisText.match(/(?:trust\s*score|score|rating)\s*:\s*(\d+)\s*(?:\/\s*10)?/i)
-                            || analysisText.match(/\b(\d+)\s*\/\s*10\b/);
-            if (scoreMatch) {
-                scoreVal = Math.min(parseInt(scoreMatch[1], 10), 10);
-            }
-
-            var scorePercent = scoreVal !== null ? scoreVal * 10 : 0;
-            var isHigh       = scoreVal !== null && scoreVal >= 7;
-            var isMid        = scoreVal !== null && scoreVal >= 4 && scoreVal < 7;
-            var scoreColor   = isHigh ? '#22c55e' : isMid ? '#eab308' : '#ef4444';
-            var barColor     = isHigh ? 'linear-gradient(90deg,#16a34a,#22c55e)'
-                             : isMid  ? 'linear-gradient(90deg,#eab308,#facc15)'
-                             : 'linear-gradient(90deg,#ef4444,#f43f5e)';
-            var cardClass    = isHigh ? 'real' : isMid ? 'neutral' : 'fake';
-            var badgeClass   = isHigh ? 'badge-real' : isMid ? 'badge-neutral' : 'badge-fake';
-            var scoreLabel   = scoreVal !== null ? scoreVal + '/10' : 'N/A';
-
-            var art        = data.article   || {};
-            var sourceName = (art.source && art.source.name) ? escHtml(art.source.name) : 'Unknown Source';
-            var artUrl     = escHtml(art.url   || '#');
-            var artTitle   = escHtml(art.title || 'Untitled Article');
-            var artDesc    = escHtml(art.description || 'No description available.');
-
-            resultPanel.innerHTML =
-                '<div class="result-card ' + cardClass + '">' +
-                  '<div class="result-head">' +
-                    '<span class="result-badge ' + badgeClass + '">AI EVALUATION</span>' +
-                    '<div class="result-title">Gemini Verification Result</div>' +
-                  '</div>' +
-
-                  '<div class="article-info-card">' +
-                    '<h4>' + artTitle + '</h4>' +
-                    '<p>' + artDesc + '</p>' +
-                    '<div class="article-meta">' +
-                      '<span>Source: <strong>' + sourceName + '</strong></span>' +
-                      '<a href="' + artUrl + '" target="_blank" rel="noopener noreferrer">' +
-                        'Read Original Article ↗' +
-                      '</a>' +
-                    '</div>' +
-                  '</div>' +
-
-                  '<div class="ai-score-row" style="border-left-color:' + scoreColor + '">' +
-                    '<div class="ai-score-label">AI Trust Score:</div>' +
-                    '<div class="ai-score-val" style="color:' + scoreColor + '">' + scoreLabel + '</div>' +
-                    '<div class="ai-score-bar-outer">' +
-                      '<div class="ai-score-bar-inner" id="score-bar-fill" style="background:' + barColor + '"></div>' +
-                    '</div>' +
-                  '</div>' +
-
-                  '<div class="reason-text">' +
-                    '<strong>AI Analysis Report:</strong>' +
-                    '<p>' + analysisText.replace(/\n/g, '<br>') + '</p>' +
-                  '</div>' +
-                '</div>';
-
-            /* Animate bar after paint */
-            setTimeout(function () {
-                var bar = document.getElementById('score-bar-fill');
-                if (bar) { bar.style.width = scorePercent + '%'; }
-            }, 80);
-
-            resultPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-        } catch (err) {
-            resultPanel.innerHTML = errorCard('Network Error', 'Unable to connect to the analysis service. Please check your connection and try again.');
-        } finally {
-            btn.innerHTML = '⚡ Fetch &amp; AI-Analyze';
-            btn.disabled  = false;
-        }
-    }
-    window.runLiveAiScan = runLiveAiScan;
-
-    /* ── Helpers ───────────────────────────────────────────────── */
-    function errorCard(title, message) {
-        return '<div class="result-card fake"><div class="result-head">' +
-               '<span class="result-badge badge-fake">ERROR</span>' +
-               '<div class="result-title">' + escHtml(title) + '</div></div>' +
-               '<p class="result-note">' + escHtml(message) + '</p></div>';
-    }
-
-    function escHtml(str) {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-    }
-
     {% if prediction %}
     /* Show toast for server-side result on page load */
-    Toastify({
-        text: 'Analysis Complete: {{ prediction }}',
-        duration: 3000,
-        gravity: 'top',
-        position: 'right',
-        style: {
-            background: '{{ "#22c55e" if prediction == "REAL" else "#ef4444" }}',
-            borderRadius: '10px'
-        }
-    }).showToast();
+    if (typeof Toastify !== 'undefined') {
+        Toastify({
+            text: 'Analysis Complete: {{ prediction }}',
+            duration: 3000,
+            gravity: 'top',
+            position: 'right',
+            style: {
+                background: '{{ "#22c55e" if prediction == "REAL" else "#ef4444" }}',
+                borderRadius: '10px'
+            }
+        }).showToast();
+    }
     {% endif %}
 
 })();
