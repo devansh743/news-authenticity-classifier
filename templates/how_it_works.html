@@ -31,3 +31,16 @@
 </div>
 
 {% endblock %}
+
+{% block scripts %}
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.nav-links a').forEach((link) => {
+            const label = link.textContent.trim();
+            if (label === 'Dashboard' || label === 'Login') {
+                link.remove();
+            }
+        });
+    });
+</script>
+{% endblock %}

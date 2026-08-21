@@ -1,10 +1,367 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+    body {
+        background:
+            radial-gradient(circle at top left, rgba(59, 130, 246, 0.10), transparent 30%),
+            radial-gradient(circle at top right, rgba(236, 72, 153, 0.10), transparent 28%),
+            linear-gradient(180deg, #f8fbff 0%, #eef3fb 100%);
+        color: #0f172a;
+        font-family: "Poppins", sans-serif;
+    }
+
+    .navbar {
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 5%;
+        background: rgba(255, 255, 255, 0.86);
+        backdrop-filter: blur(18px);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+    }
+
+    .logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #0f172a;
+        letter-spacing: -0.02em;
+    }
+
+    .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .nav-links a {
+        text-decoration: none;
+        color: #475569;
+        font-weight: 600;
+        padding: 9px 14px;
+        border-radius: 999px;
+        transition: all 0.2s ease;
+    }
+
+    .nav-links a:hover {
+        color: #1d4ed8;
+        background: rgba(37, 99, 235, 0.08);
+    }
+
+    .nav-btn {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #fff !important;
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.24);
+    }
+
+    .nav-btn:hover {
+        background: linear-gradient(135deg, #1d4ed8, #1e40af);
+        color: #fff !important;
+    }
+
+    .main-container {
+        padding: 28px 18px 56px;
+    }
+
+    .dashboard-container {
+        max-width: 1260px;
+        margin: 0 auto;
+    }
+
+    .dash-header,
+    .card,
+    .stat-card {
+        background: rgba(255, 255, 255, 0.82);
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.06);
+        backdrop-filter: blur(14px);
+    }
+
+    .dash-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 24px 28px;
+        border-radius: 26px;
+        margin-bottom: 22px;
+    }
+
+    .dash-header h2 {
+        font-size: 1.9rem;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+        color: #0f172a;
+    }
+
+    .dash-header h2 span {
+        color: #2563eb;
+    }
+
+    .btn-logout {
+        text-decoration: none;
+        color: #b91c1c;
+        font-weight: 700;
+        padding: 10px 16px;
+        border-radius: 999px;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        transition: all 0.2s ease;
+    }
+
+    .btn-logout:hover {
+        transform: translateY(-1px);
+        background: #fee2e2;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 18px;
+        margin-bottom: 22px;
+    }
+
+    .stat-card {
+        border-radius: 24px;
+        padding: 22px 24px;
+        color: #fff;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .stat-card::after {
+        content: "";
+        position: absolute;
+        inset: auto -30px -30px auto;
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    .stat-card h4 {
+        font-size: 0.92rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        opacity: 0.92;
+        margin-bottom: 10px;
+    }
+
+    .stat-card p {
+        font-size: 2rem;
+        line-height: 1;
+        font-weight: 800;
+    }
+
+    .stat-card.total { background: linear-gradient(135deg, #4f46e5, #6366f1); }
+    .stat-card.fake { background: linear-gradient(135deg, #ec4899, #ef4444); }
+
+    .card {
+        border-radius: 28px;
+        padding: 24px;
+        margin-top: 0;
+    }
+
+    .card h3 {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #0f172a;
+        margin-bottom: 14px;
+        letter-spacing: -0.02em;
+    }
+
+    .history-card {
+        padding: 26px;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        margin-bottom: 16px;
+    }
+
+    .section-header h3 {
+        margin-bottom: 6px;
+    }
+
+    .section-header p {
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .section-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.09);
+        color: #1d4ed8;
+        font-size: 0.74rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .table-shell {
+        overflow: hidden;
+        border-radius: 22px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+
+    .admin-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 0;
+    }
+
+    .admin-table thead th {
+        text-align: left;
+        padding: 14px 16px;
+        background: #f8fafc;
+        color: #64748b;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .admin-table tbody td {
+        padding: 16px;
+        border-bottom: 1px solid #edf2f7;
+        vertical-align: middle;
+    }
+
+    .history-table tbody tr {
+        transition: background-color 0.18s ease, transform 0.18s ease;
+    }
+
+    .history-table tbody tr:hover {
+        background: #f8fbff;
+    }
+
+    .table-primary {
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .table-secondary {
+        margin-top: 4px;
+        color: #94a3b8;
+        font-size: 0.82rem;
+    }
+
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 74px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    .badge.real {
+        background: #dcfce7;
+        color: #166534;
+    }
+
+    .badge.fake {
+        background: #fee2e2;
+        color: #991b1b;
+    }
+
+    .confidence-value {
+        font-weight: 700;
+        color: #334155;
+    }
+
+    .action-link.delete {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 116px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: #fef2f2;
+        color: #b91c1c;
+        border: 1px solid #fecaca;
+        text-decoration: none;
+        font-size: 0.82rem;
+        font-weight: 700;
+        transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+    }
+
+    .action-link.delete:hover {
+        background: #fee2e2;
+        transform: translateY(-1px);
+        box-shadow: 0 10px 20px rgba(239, 68, 68, 0.12);
+    }
+
+    .action-link.delete:focus-visible {
+        outline: 3px solid rgba(239, 68, 68, 0.18);
+        outline-offset: 2px;
+    }
+
+    @media (max-width: 900px) {
+        .navbar {
+            padding: 16px 18px;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .dash-header,
+        .section-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .card,
+        .history-card,
+        .dash-header {
+            padding: 20px;
+        }
+
+        .table-shell {
+            overflow-x: auto;
+        }
+
+        .action-link.delete {
+            width: 100%;
+        }
+    }
+</style>
 <div class="dashboard-container">
     <div class="dash-header">
         <h2>Admin <span>Control Panel</span></h2>
         <a href="/logout" class="btn-logout">Exit Admin Mode</a>
     </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div style="margin-bottom: 18px; display: grid; gap: 10px;">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
 
     <div class="stats-grid">
         <div class="stat-card total">
@@ -31,11 +388,13 @@
             <tbody>
                 {% for user in users %}
                 <tr>
-                    <td>#{{ user.id }}</td>
+                    <td>#{{ loop.index }}</td>
                     <td>{{ user.username }}</td>
                     <td>{{ user.email }}</td>
                     <td>
-                        <a href="/admin/delete_user/{{ user.id }}" class="action-link delete" onclick="return confirm('Delete this user?')">Remove User</a>
+                        <form method="POST" action="/admin/delete_user/{{ user.id }}" onsubmit="return confirm('Delete this user?')">
+                            <button type="submit" class="action-link delete history-action">Remove User</button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}
@@ -43,30 +402,105 @@
         </table>
     </div>
 
-    <div class="card" style="margin-top: 30px;">
-        <h3>Global Prediction History</h3>
-        <table class="admin-table">
-            <thead>
-                <tr>
-                    <th>User</th>
-                    <th>Prediction</th>
-                    <th>Confidence</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in history %}
-                <tr>
-                    <td><strong>{{ row.username }}</strong></td>
-                    <td><span class="badge {{ row.prediction|lower }}">{{ row.prediction }}</span></td>
-                    <td>{{ row.confidence }}%</td>
-                    <td>
-                        <a href="/admin/delete_record/{{ row.id }}" class="action-link delete">Delete Entry</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="card history-card" style="margin-top: 30px;">
+        <div class="section-header">
+            <div>
+                <h3>Global Prediction History</h3>
+                <p>Complete audit trail of every article analyzed in the system.</p>
+            </div>
+            <span class="section-chip">Live archive</span>
+        </div>
+
+        <div class="table-shell">
+            <form method="POST" action="/admin/delete_records" id="bulkDeleteForm" class="action-form bulk-form">
+                <div class="table-toolbar">
+                    <label class="select-all-control">
+                        <input type="checkbox" id="selectAllHistory">
+                        <span>Select all</span>
+                    </label>
+                    <div class="toolbar-actions">
+                        <button type="submit" name="action" value="selected" class="action-link delete history-action">
+                            Delete Selected
+                        </button>
+                        <button type="submit" name="action" value="all" class="action-link delete history-action" onclick="return confirm('Delete every history entry?')">
+                            Delete All
+                        </button>
+                    </div>
+                </div>
+
+                <table class="admin-table history-table">
+                    <thead>
+                        <tr>
+                            <th class="select-column">Select</th>
+                            <th>User</th>
+                            <th>Analyzed News</th>
+                            <th>Prediction</th>
+                            <th>Confidence</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in history %}
+                        <tr>
+                            <td class="select-column">
+                                <input type="checkbox" name="record_ids" value="{{ row.id }}" class="history-checkbox">
+                            </td>
+                            <td>
+                                <div class="table-primary">{{ row.username }}</div>
+                                <div class="table-secondary">Record #{{ row.id }}</div>
+                            </td>
+                            <td>
+                                <div class="text-truncate" title="{{ row.news }}">
+                                    {{ row.news[:140] }}{% if row.news|length > 140 %}...{% endif %}
+                                </div>
+                            </td>
+                            <td><span class="badge {{ row.prediction|lower }}">{{ row.prediction }}</span></td>
+                            <td><span class="confidence-value">{{ row.confidence }}%</span></td>
+                            <td>
+                                <form method="POST" action="/admin/delete_record/{{ row.id }}" class="action-form row-action-form" onsubmit="return confirm('Delete this entry?')">
+                                    <button type="submit" class="action-link delete history-action">Delete Entry</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </form>
+        </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.nav-links a').forEach((link) => {
+            const label = link.textContent.trim();
+            if (label === 'Dashboard' || label === 'Login') {
+                link.remove();
+            }
+        });
+
+        const selectAllHistory = document.getElementById('selectAllHistory');
+        const rowCheckboxes = document.querySelectorAll('.history-checkbox');
+        if (selectAllHistory) {
+            selectAllHistory.addEventListener('change', () => {
+                rowCheckboxes.forEach((checkbox) => {
+                    checkbox.checked = selectAllHistory.checked;
+                });
+            });
+        }
+
+        const bulkDeleteForm = document.getElementById('bulkDeleteForm');
+        if (bulkDeleteForm) {
+            bulkDeleteForm.addEventListener('submit', (event) => {
+                const action = event.submitter ? event.submitter.value : 'selected';
+                if (action === 'selected' && !Array.from(rowCheckboxes).some((checkbox) => checkbox.checked)) {
+                    event.preventDefault();
+                    alert('Select at least one history entry first.');
+                }
+            });
+        }
+    });
+</script>
 {% endblock %}

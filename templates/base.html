@@ -19,8 +19,6 @@
 
     <div class="nav-links">
         <a href="/">Home</a>
-        <a href="/dashboard">Dashboard</a>
-        <a href="/login">Login</a>
         <a href="/register" class="nav-btn">Register</a>
     </div>
 
@@ -31,6 +29,18 @@
 </div>
 
 {% block scripts %}{% endblock %}
+<script>
+function stripSharedNavLinks() {
+    document.querySelectorAll('.nav-links a').forEach((link) => {
+        const label = link.textContent.trim();
+        if (label === 'Dashboard' || label === 'Login') {
+            link.remove();
+        }
+    });
+}
+
+window.addEventListener('DOMContentLoaded', stripSharedNavLinks);
+</script>
 <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 <script>
 function showToast(message, type="info") {

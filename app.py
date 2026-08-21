@@ -8,6 +8,11 @@ from html import unescape
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from werkzeug.security import generate_password_hash, check_password_hash
+from news_pipeline import (
+    analyze_news_with_gemini,
+    fetch_live_news,
+    format_article_for_analysis,
+)
 
 ADMIN_EMAIL = "admin@fnd.com"
 ADMIN_PASSWORD = "admin123"
@@ -30,6 +35,8 @@ if os.path.exists(VECT_PATH):
 
 app = Flask(__name__)
 app.secret_key = "secretkey123"
+app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.jinja_env.auto_reload = True
 
 MIN_ANALYSIS_WORDS = 8
 MIN_RELIABLE_WORDS = 25
@@ -174,7 +181,7 @@ def home():
 
 @app.route("/how-it-works")
 def how_it_works():
-    return render_template("how_it_works.html")
+    return strip_nav_links(render_template("how_it_works.html"))
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -214,7 +221,7 @@ def register():
             if conn:
                 conn.close()
 
-    return render_template("register.html")
+    return strip_nav_links(render_template("register.html"))
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -243,7 +250,7 @@ def login():
             return redirect("/dashboard")
         return render_template("login.html", error="Invalid email or password")
 
-    return render_template("login.html")
+    return strip_nav_links(render_template("login.html"))
 
 
 def normalize_text(text):
@@ -357,6 +364,14 @@ def get_article_preview(text, limit=120):
     return cleaned[:limit].rsplit(" ", 1)[0] + "..."
 
 
+def strip_nav_links(rendered_html):
+    return (
+        rendered_html
+        .replace('<a href="/dashboard">Dashboard</a>', '')
+        .replace('<a href="/login">Login</a>', '')
+    )
+
+
 @app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
     # Must have a user in session AND either be an explicit login session
@@ -427,7 +442,7 @@ def dashboard():
     if session.get("just_registered"):
         session.pop("just_registered", None)
 
-    return render_template(
+    return strip_nav_links(render_template(
         "dashboard.html",
         user=session["user"],
         prediction=prediction,
@@ -439,7 +454,7 @@ def dashboard():
         news_text=news_content,
         news_url=news_url,
         preview=preview,
-    )
+    ))
 
 
 @app.route("/admin")
@@ -450,13 +465,13 @@ def admin():
 
     conn = get_db_connection()
     history_data = conn.execute("SELECT * FROM history ORDER BY id DESC").fetchall()
-    users_data = conn.execute("SELECT id, username, email FROM users").fetchall()
+    users_data = conn.execute("SELECT id, username, email FROM users ORDER BY id ASC").fetchall()
     conn.close()
 
-    return render_template("admin.html", history=history_data, users=users_data)
+    return strip_nav_links(render_template("admin.html", history=history_data, users=users_data))
 
 
-@app.route("/admin/delete_record/<int:record_id>")
+@app.route("/admin/delete_record/<int:record_id>", methods=["GET", "POST"])
 def delete_record(record_id):
     if "admin" not in session:
         return redirect("/login")
@@ -469,7 +484,40 @@ def delete_record(record_id):
     return redirect("/admin")
 
 
-@app.route("/admin/delete_user/<int:user_id>")
+@app.route("/admin/delete_records", methods=["GET", "POST"])
+def delete_records():
+    if "admin" not in session:
+        return redirect("/login")
+
+    if request.method == "GET":
+        flash("Use the delete controls from the admin page.", "error")
+        return redirect("/admin")
+
+    action = (request.form.get("action") or "selected").strip().lower()
+    record_ids = request.form.getlist("record_ids")
+
+    conn = get_db_connection()
+    try:
+        if action == "all":
+            conn.execute("DELETE FROM history")
+            flash("All history entries deleted", "info")
+        else:
+            if not record_ids:
+                flash("Select at least one entry to delete", "error")
+                return redirect("/admin")
+
+            placeholders = ",".join(["?"] * len(record_ids))
+            conn.execute(f"DELETE FROM history WHERE id IN ({placeholders})", record_ids)
+            flash("Selected entries deleted", "info")
+
+        conn.commit()
+    finally:
+        conn.close()
+
+    return redirect("/admin")
+
+
+@app.route("/admin/delete_user/<int:user_id>", methods=["GET", "POST"])
 def delete_user(user_id):
     conn = get_db_connection()
     try:
@@ -503,17 +551,17 @@ def predict():
         try:
             user_input = fetch_article_text(url_input)
         except Exception as exc:
-            return render_template("dashboard.html", prediction=f"Unable to analyze URL: {exc}")
+            return strip_nav_links(render_template("dashboard.html", prediction=f"Unable to analyze URL: {exc}"))
 
     if not user_input:
-        return render_template("dashboard.html", prediction="⚠ Please paste article text or provide a valid URL.")
+        return strip_nav_links(render_template("dashboard.html", prediction="⚠ Please paste article text or provide a valid URL."))
 
     try:
         prediction, confidence, explanation, notice = analyze_input(user_input)
     except ValueError as exc:
-        return render_template("dashboard.html", prediction=f"⚠ {exc}")
+        return strip_nav_links(render_template("dashboard.html", prediction=f"⚠ {exc}"))
 
-    return render_template("dashboard.html", prediction=prediction, confidence=confidence, notice=notice)
+    return strip_nav_links(render_template("dashboard.html", prediction=prediction, confidence=confidence, notice=notice))
 
 
 @app.route('/api/analyze', methods=['POST'])
@@ -552,11 +600,38 @@ def api_analyze():
         return {'error': f'Unable to analyze this content: {exc}'}, 500
 
 
+@app.route('/api/live-news-analyze', methods=['POST'])
+def api_live_news_analyze():
+    payload = request.get_json(silent=True) or {}
+    keyword = (payload.get('keyword') or request.form.get('keyword') or 'election').strip()
+
+    if not keyword:
+        return {'error': 'Please provide a keyword.'}, 400
+
+    try:
+        article = fetch_live_news(keyword)
+        news_text = format_article_for_analysis(article)
+        analysis = analyze_news_with_gemini(news_text)
+
+        return {
+            'keyword': keyword,
+            'article': article,
+            'news_text': news_text,
+            'analysis': analysis,
+        }
+    except RuntimeError as exc:
+        return {'error': str(exc)}, 500
+    except ValueError as exc:
+        return {'error': str(exc)}, 400
+    except Exception as exc:
+        return {'error': f'Live analysis failed: {exc}'}, 502
+
+
 @app.route("/metrics")
 def metrics():
     with open("metrics.json") as f:
         data = json.load(f)
-    return render_template("metrics.html", accuracy=data["accuracy"])
+    return strip_nav_links(render_template("metrics.html", accuracy=data["accuracy"]))
 
 
 @app.route("/history")
@@ -571,7 +646,7 @@ def history():
     ).fetchall()
     conn.close()
 
-    return render_template("history.html", records=records)
+    return strip_nav_links(render_template("history.html", records=records))
 
 
 @app.route("/health")
