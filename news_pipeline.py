@@ -8,7 +8,42 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-import google.generativeai as genai
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
+
+try:
+    from google import genai as google_genai
+except ImportError:
+    google_genai = None
+
+if genai is not None and not hasattr(genai, "Client"):
+    if google_genai is not None and hasattr(google_genai, "Client"):
+        genai.Client = google_genai.Client
+    else:
+        class _CompatClient:
+            def __init__(self, *args, **kwargs):
+                self.api_key = kwargs.get("api_key")
+                self.models = self
+
+            def generate_content(self, *args, **kwargs):
+                raise RuntimeError("Google Generative AI SDK is unavailable in this environment.")
+
+        genai.Client = _CompatClient
+
+if genai is None and google_genai is not None:
+    genai = google_genai
+    if not hasattr(genai, "Client"):
+        class _CompatClient:
+            def __init__(self, *args, **kwargs):
+                self.api_key = kwargs.get("api_key")
+                self.models = self
+
+            def generate_content(self, *args, **kwargs):
+                raise RuntimeError("Google Generative AI SDK is unavailable in this environment.")
+
+        genai.Client = _CompatClient
 
 # Load environment variables from local .env file if it exists
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
@@ -224,6 +259,12 @@ def analyze_news_with_gemini(news_text, local_fallback_fn=None):
     api_key = os.environ.get("GEMINI_API_KEY")
     if api_key:
         try:
+            if genai is None:
+                raise RuntimeError("Google GenAI SDK is not installed.")
+
+            if not hasattr(genai, "Client"):
+                raise RuntimeError("Google GenAI client is unavailable in this environment.")
+
             client = genai.Client(api_key=api_key)
             prompt = f"""Analyze this news snippet for potential misinformation.
 Look for sensationalism, logical fallacies, or missing context.
@@ -233,7 +274,7 @@ News to analyze:
 {news_text}
 """
             response = client.models.generate_content(
-                model="gemini-3.6-flash",
+                model="gemini-2.0-flash",
                 contents=prompt,
             )
             return response.text
