@@ -88,6 +88,10 @@ class NewsPipelineTests(unittest.TestCase):
         self.assertEqual(article["title"], "BBC News Article")
         mock_fetch_url.assert_called_once_with(url_input)
 
+    def test_fetch_live_news_rejects_video_urls(self):
+        with self.assertRaisesRegex(ValueError, "not supported for article analysis"):
+            news_pipeline.fetch_live_news("https://www.youtube.com/watch?v=abc123")
+
     def test_format_article_for_analysis_dict(self):
         article = {
             "title": "A Great Title",

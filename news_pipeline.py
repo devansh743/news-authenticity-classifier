@@ -200,6 +200,13 @@ def fetch_live_news(keyword):
 
     # 1. Direct URL handling
     if is_url(query):
+        parsed = urlparse(query)
+        host = (parsed.netloc or "").lower().replace("www.", "")
+        blocked = ("youtube.com", "youtu.be", "vimeo.com")
+        if host.endswith(blocked):
+            raise ValueError("This source is not supported for article analysis. Please paste article text or use a news webpage URL.")
+        if any(b in host for b in ("youtube.com", "youtu.be", "vimeo.com")):
+            raise ValueError("This source is not supported for article analysis. Please paste article text or use a news webpage URL.")
         return fetch_article_from_url(query)
 
     # 2. GNews API attempt (if key available)
