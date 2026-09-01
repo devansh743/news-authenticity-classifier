@@ -21,6 +21,10 @@ class AppLogicTests(unittest.TestCase):
         self.assertIn("President Joe Biden", app.get_article_preview(text))
         self.assertIn("economic plan", app.get_article_preview(text))
 
+    def test_fetch_article_text_rejects_youtube_links(self):
+        with self.assertRaisesRegex(ValueError, "not supported for article analysis"):
+            app.fetch_article_text("https://www.youtube.com/watch?v=abc123")
+
     @patch("app.predict_article")
     def test_api_analyze_returns_prediction_for_article_text(self, mock_predict_article):
         mock_predict_article.return_value = ("REAL", 87.5, {"keywords": ["announced"], "top_words": ["policy"]})

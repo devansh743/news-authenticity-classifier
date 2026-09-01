@@ -392,6 +392,12 @@ async function runLiveAiScan() {
         var artTitle   = escHtml(art.title || 'Untitled Article');
         var artDesc    = escHtml(art.description || 'No description available.');
 
+        if (isHigh || !isMid) {
+            totalState.total += 1;
+            totalState[isHigh ? 'real' : 'fake'] += 1;
+            updateStatsDisplay();
+        }
+
         resultPanel.innerHTML =
             '<div class="result-card ' + cardClass + '">' +
               '<div class="result-head">' +

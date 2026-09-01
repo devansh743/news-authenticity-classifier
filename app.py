@@ -5,6 +5,7 @@ import os
 import json
 import re
 from html import unescape
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -287,9 +288,25 @@ def is_news(text):
     return False
 
 
+def is_supported_article_url(url):
+    if not url:
+        return False
+
+    host = urlparse(url).netloc.lower().replace("www.", "")
+    blocked_hosts = ("youtube.com", "youtu.be", "vimeo.com")
+    if host.endswith("youtube.com") or host.endswith("youtu.be") or host.endswith("vimeo.com"):
+        return False
+    if any(blocked in host for blocked in blocked_hosts):
+        return False
+    return True
+
+
 def fetch_article_text(url):
     if not url:
         raise ValueError("No URL provided")
+
+    if not is_supported_article_url(url):
+        raise ValueError("This source is not supported for article analysis. Please paste article text or use a news webpage URL.")
 
     req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urlopen(req, timeout=15) as response:
