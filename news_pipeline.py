@@ -8,7 +8,7 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 
-from google import genai
+import google.generativeai as genai
 
 # Load environment variables from local .env file if it exists
 env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")

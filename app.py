@@ -400,7 +400,8 @@ def dashboard():
         try:
             if news_url:
                 news_content = fetch_article_text(news_url)
-            elif not news_content:
+            
+            if not news_content:
                 error = "Please paste article text or provide a valid URL."
             else:
                 prediction, confidence, explanation, notice = analyze_input(news_content)
