@@ -76,7 +76,7 @@ class AppLogicTests(unittest.TestCase):
 
     @patch("app.compute_features")
     @patch("app.model")
-    def test_predict_article_prefers_real_when_fake_probability_is_below_threshold(self, mock_model, mock_compute_features):
+    def test_predict_article_uses_highest_probability_class(self, mock_model, mock_compute_features):
         mock_compute_features.return_value = [[0]]
         mock_model.classes_ = [0, 1]
         mock_model.predict_proba.return_value = [[0.64, 0.36]]
@@ -85,8 +85,8 @@ class AppLogicTests(unittest.TestCase):
             "Officials announced a new infrastructure plan with updated contracts for city transit projects across several districts."
         )
 
-        self.assertEqual(prediction, "REAL")
-        self.assertEqual(confidence, 36.0)
+        self.assertEqual(prediction, "FAKE")
+        self.assertEqual(confidence, 64.0)
         self.assertIsInstance(explanation, dict)
 
     @patch("app.get_db_connection")

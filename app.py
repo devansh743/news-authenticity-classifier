@@ -341,21 +341,17 @@ def predict_article(text):
     data = compute_features([cleaned])
     probabilities = model.predict_proba(data)[0]
     classes = list(getattr(model, "classes_", []))
-    if 0 in classes and 1 in classes:
-        fake_index = classes.index(0)
-        real_index = classes.index(1)
-        fake_probability = float(probabilities[fake_index])
-        real_probability = float(probabilities[real_index])
-        if fake_probability >= FAKE_PROBABILITY_THRESHOLD and fake_probability > real_probability:
-            prediction = "FAKE"
-            confidence = round(fake_probability * 100, 2)
-        else:
-            prediction = "REAL"
-            confidence = round(real_probability * 100, 2)
+    best_index = int(max(range(len(probabilities)), key=lambda i: probabilities[i]))
+    best_label = classes[best_index] if classes else int(model.predict(data)[0])
+
+    if best_label == 0:
+        prediction = "FAKE"
+    elif best_label == 1:
+        prediction = "REAL"
     else:
-        result = int(model.predict(data)[0])
-        confidence = round(float(max(probabilities)) * 100, 2)
-        prediction = "REAL" if result == 1 else "FAKE"
+        prediction = str(best_label).upper()
+
+    confidence = round(float(probabilities[best_index]) * 100, 2)
     # build a lightweight explanation: matched keywords and top words
     lower = cleaned.lower()
     matched = [cue for cue in sorted(NEWS_CUES) if re.search(rf"\b{re.escape(cue)}\b", lower)]
