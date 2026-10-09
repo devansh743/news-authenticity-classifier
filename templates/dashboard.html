@@ -405,10 +405,10 @@ async function runLiveAiScan() {
         var artTitle   = escHtml(art.title || 'Untitled Article');
         var artDesc    = escHtml(art.description || 'No description available.');
 
-        if (isHigh || !isMid) {
-            totalState.total += 1;
-            totalState[isHigh ? 'real' : 'fake'] += 1;
-            updateStatsDisplay();
+        if ((isHigh || !isMid) && window.liveStats && window.updateDashboardStats) {
+            window.liveStats.total += 1;
+            window.liveStats[isHigh ? 'real' : 'fake'] += 1;
+            window.updateDashboardStats();
         }
 
         resultPanel.innerHTML =
@@ -514,6 +514,10 @@ async function runLiveAiScan() {
         statsChart.data.datasets[0].hoverOffset = currentHasData ? 4 : 0;
         statsChart.update();
     }
+
+    /* Expose the shared dashboard state to the live-news scanner. */
+    window.liveStats = totalState;
+    window.updateDashboardStats = updateStatsDisplay;
     updateStatsDisplay();
 
     /* ── News Detection form (AJAX) ───────────────────────────── */
