@@ -55,6 +55,48 @@ if os.path.exists(env_path):
                 k, v = line.split("=", 1)
                 os.environ[k.strip()] = v.strip()
 
+PAYWALL_MARKERS = (
+    "you are logged in",
+    "account subscription benefits",
+    "unlock these with subscription",
+    "sign in to continue",
+    "subscribe to read",
+    "enable javascript",
+)
+
+
+def validate_article_content(article):
+    """Reject pages where extracted text is mainly login, paywall, or app boilerplate."""
+    if not isinstance(article, dict):
+        raise ValueError("The news source returned an invalid article.")
+
+    content = " ".join(
+        str(article.get(field) or "")
+        for field in ("title", "description", "content")
+    )
+    normalized = re.sub(r"\s+", " ", content).strip().lower()
+    matched_markers = [marker for marker in PAYWALL_MARKERS if marker in normalized]
+
+    if len(matched_markers) >= 2 or (
+        "you are logged in" in normalized and "loading" in normalized
+    ):
+        raise ValueError(
+            "The source returned login or subscription content instead of the article. "
+            "Please try another news result or paste the article text."
+        )
+
+    meaningful_words = [
+        word for word in re.findall(r"[a-zA-Z]{3,}", normalized)
+        if word not in {"loading", "login", "logged", "account", "subscription"}
+    ]
+    if len(meaningful_words) < 6:
+        raise ValueError(
+            "The news source did not provide enough readable article content. "
+            "Please try another news result or paste the article text."
+        )
+
+    return article
+
 
 def is_url(text):
     """
@@ -133,13 +175,13 @@ def fetch_article_from_url(url):
     if not title:
         title = preview[:80] + "..." if len(preview) > 80 else preview
 
-    return {
+    return validate_article_content({
         "title": title,
         "description": preview,
         "content": article_text,
         "url": url,
         "source": {"name": domain_name, "url": url},
-    }
+    })
 
 
 def fetch_from_google_news_rss(keyword):
@@ -221,7 +263,7 @@ def fetch_live_news(keyword):
                 data = response.json()
                 articles = data.get("articles", [])
                 if articles:
-                    return articles[0]
+                    return validate_article_content(articles[0])
                 fetch_errors.append("GNews returned no articles")
             else:
                 fetch_errors.append(f"GNews returned HTTP {response.status_code}")
@@ -234,7 +276,7 @@ def fetch_live_news(keyword):
     try:
         rss_article = fetch_from_google_news_rss(query)
         if rss_article:
-            return rss_article
+            return validate_article_content(rss_article)
         fetch_errors.append("Google News RSS returned no articles")
     except (HTTPError, URLError, ET.ParseError, TimeoutError) as exc:
         fetch_errors.append(f"Google News RSS request failed: {exc}")

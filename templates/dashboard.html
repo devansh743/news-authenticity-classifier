@@ -382,10 +382,10 @@ async function runLiveAiScan() {
         /* Parse trust score: "Trust Score: 8/10" or "8/10" anywhere */
         var analysisText = data.analysis || '';
         var scoreVal     = null;
-        var scoreMatch   = analysisText.match(/(?:trust\s*score|score|rating)\s*:\s*(\d+)\s*(?:\/\s*10)?/i)
-                        || analysisText.match(/\b(\d+)\s*\/\s*10\b/);
+        var scoreMatch   = analysisText.match(/(?:trust\s*score|score|rating)\s*:\s*(\d+(?:\.\d+)?)\s*(?:\/\s*10)?/i)
+                        || analysisText.match(/\b(\d+(?:\.\d+)?)\s*\/\s*10\b/);
         if (scoreMatch) {
-            scoreVal = Math.min(parseInt(scoreMatch[1], 10), 10);
+            scoreVal = Math.min(parseFloat(scoreMatch[1]), 10);
         }
 
         var scorePercent = scoreVal !== null ? scoreVal * 10 : 0;
@@ -397,7 +397,7 @@ async function runLiveAiScan() {
                          : 'linear-gradient(90deg,#ef4444,#f43f5e)';
         var cardClass    = isHigh ? 'real' : isMid ? 'neutral' : 'fake';
         var badgeClass   = isHigh ? 'badge-real' : isMid ? 'badge-neutral' : 'badge-fake';
-        var scoreLabel   = scoreVal !== null ? scoreVal + '/10' : 'N/A';
+        var scoreLabel   = scoreVal !== null ? scoreVal.toFixed(1) + '/10' : 'N/A';
 
         var art        = data.article   || {};
         var sourceName = (art.source && art.source.name) ? escHtml(art.source.name) : 'Unknown Source';
@@ -415,7 +415,7 @@ async function runLiveAiScan() {
             '<div class="result-card ' + cardClass + '">' +
               '<div class="result-head">' +
                 '<span class="result-badge ' + badgeClass + '">AI EVALUATION</span>' +
-                '<div class="result-title">Gemini Verification Result</div>' +
+                '<div class="result-title">News Credibility Evaluation</div>' +
               '</div>' +
 
               '<div class="article-info-card">' +

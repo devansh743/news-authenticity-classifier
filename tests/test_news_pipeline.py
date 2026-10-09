@@ -92,6 +92,15 @@ class NewsPipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not supported for article analysis"):
             news_pipeline.fetch_live_news("https://www.youtube.com/watch?v=abc123")
 
+    def test_validate_article_content_rejects_paywall_boilerplate(self):
+        article = {
+            "title": "Breaking News",
+            "description": "You are logged in. Loading...",
+            "content": "Your active subscription account subscription benefits unlock these with subscription products.",
+        }
+        with self.assertRaisesRegex(ValueError, "login or subscription content"):
+            news_pipeline.validate_article_content(article)
+
     def test_format_article_for_analysis_dict(self):
         article = {
             "title": "A Great Title",
@@ -139,4 +148,3 @@ class NewsPipelineTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

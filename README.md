@@ -136,7 +136,7 @@ news-authenticity-classifier/
 python -m unittest discover tests
 ```
 
-All 19 tests should pass (app logic + news pipeline).
+All tests should pass (app logic + news pipeline).
 
 ---
 
