@@ -1,11 +1,16 @@
 import unittest
 from unittest.mock import patch
+import os
 
 import app
 from werkzeug.security import generate_password_hash
 
 
 class AppLogicTests(unittest.TestCase):
+    def test_render_database_path_uses_configured_path(self):
+        with patch.dict(os.environ, {"DB_PATH": "/var/data/users.db"}):
+            self.assertEqual(app.resolve_db_path(), "/var/data/users.db")
+
     def test_is_news_accepts_real_article_text(self):
         text = "President Joe Biden announced a new economic plan on Monday, saying the policy will help families across the country."
         self.assertTrue(app.is_news(text))
