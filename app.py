@@ -118,6 +118,44 @@ def combine_notices(*messages):
     return " ".join(message for message in messages if message)
 
 
+def save_history(username, news, prediction, confidence):
+    if not username:
+        return
+
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "INSERT INTO history (username, news, prediction, confidence) VALUES (?, ?, ?, ?)",
+            (username, news[:2000], prediction, confidence),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def parse_live_trust_score(analysis):
+    if not analysis:
+        return None
+
+    match = re.search(
+        r"(?:trust\s*score|score|rating)\s*:\s*(\d+(?:\.\d+)?)\s*(?:/\s*10)?",
+        analysis,
+        re.IGNORECASE,
+    ) or re.search(r"\b(\d+(?:\.\d+)?)\s*/\s*10\b", analysis)
+    if not match:
+        return None
+
+    return min(float(match.group(1)), 10.0)
+
+
+def classify_live_score(score):
+    if score >= 7:
+        return "REAL"
+    if score < 4:
+        return "FAKE"
+    return "NEUTRAL"
+
+
 def analyze_input(text):
     cleaned = normalize_text(text)
     if not cleaned:
@@ -609,18 +647,8 @@ def api_analyze():
         if not user_input:
             return {'error': 'Please paste article text or provide a valid URL.'}, 400
         prediction, confidence, explanation, notice = analyze_input(user_input)
-        # save history if user present
         if 'user' in session and prediction in ('REAL', 'FAKE'):
-            try:
-                conn = get_db_connection()
-                conn.execute(
-                    "INSERT INTO history (username, news, prediction, confidence) VALUES (?, ?, ?, ?)",
-                    (session['user'], user_input[:2000], prediction, confidence),
-                )
-                conn.commit()
-                conn.close()
-            except Exception:
-                pass
+            save_history(session['user'], user_input, prediction, confidence)
 
         return {
             'prediction': prediction,
@@ -645,12 +673,18 @@ def api_live_news_analyze():
         article = fetch_live_news(keyword)
         news_text = format_article_for_analysis(article)
         analysis = analyze_news_with_gemini(news_text, local_fallback_fn=predict_article)
+        trust_score = parse_live_trust_score(analysis)
+        saved_prediction = classify_live_score(trust_score) if trust_score is not None else None
+        if saved_prediction and "user" in session:
+            save_history(session["user"], news_text, saved_prediction, round(trust_score * 10, 2))
 
         return {
             'keyword': keyword,
             'article': article,
             'news_text': news_text,
             'analysis': analysis,
+            'saved_prediction': saved_prediction,
+            'trust_score': trust_score,
         }
     except RuntimeError as exc:
         return {'error': str(exc)}, 500

@@ -76,7 +76,8 @@ class AppLogicTests(unittest.TestCase):
 
     @patch("app.analyze_news_with_gemini")
     @patch("app.fetch_live_news")
-    def test_live_news_api_returns_analysis(self, mock_fetch_live_news, mock_analyze):
+    @patch("app.save_history")
+    def test_live_news_api_returns_analysis(self, mock_save_history, mock_fetch_live_news, mock_analyze):
         mock_fetch_live_news.return_value = {
             "title": "Breaking Election News",
             "description": "Officials announced a policy update.",
@@ -87,13 +88,18 @@ class AppLogicTests(unittest.TestCase):
         mock_analyze.return_value = "Trust Score: 8/10"
 
         with app.app.test_client() as client:
-            response = client.post(
-                "/api/live-news-analyze",
-                json={"keyword": "election"},
-            )
+            with client.session_transaction() as session:
+                session["user"] = "alice"
+            response = client.post("/api/live-news-analyze", json={"keyword": "election"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["analysis"], "Trust Score: 8/10")
+        self.assertEqual(response.get_json()["saved_prediction"], "REAL")
+        mock_save_history.assert_called_once()
+        saved_args = mock_save_history.call_args.args
+        self.assertEqual(saved_args[0], "alice")
+        self.assertIn("Breaking Election News", saved_args[1])
+        self.assertEqual(saved_args[2:], ("REAL", 80.0))
         mock_fetch_live_news.assert_called_once_with("election")
 
     @patch("app.fetch_live_news", side_effect=ValueError("news source unavailable"))
