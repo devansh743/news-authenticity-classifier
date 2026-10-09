@@ -41,7 +41,7 @@
         to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* Article info card (Live AI Scanner result) */
+    /* Article information card (current news result) */
     .article-info-card {
         background: rgba(37, 99, 235, 0.03);
         border: 1px solid rgba(37, 99, 235, 0.1);
@@ -197,7 +197,7 @@
                         aria-controls="nlp-tab"
                         id="tab-btn-nlp"
                         onclick="switchTab(this, 'nlp-tab')">
-                    🧠 NLP Classifier
+                    🧠 News Detection
                 </button>
                 <button class="tab-btn"
                         role="tab"
@@ -205,11 +205,11 @@
                         aria-controls="live-ai-tab"
                         id="tab-btn-live"
                         onclick="switchTab(this, 'live-ai-tab')">
-                    ⚡ Live AI Scanner
+                    ⚡ Current News Detection
                 </button>
             </div>
 
-            <!-- Tab 1: NLP Classifier -->
+            <!-- Tab 1: News Detection -->
             <div id="nlp-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-nlp">
                 <h3>Analyze New Article</h3>
                 <p class="dash-subtitle">Paste article text or provide a live news URL for analysis.</p>
@@ -272,9 +272,9 @@
                 {% endif %}
             </div>
 
-            <!-- Tab 2: Live AI Scanner -->
+            <!-- Tab 2: Current News Detection -->
             <div id="live-ai-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-live" style="display: none;">
-                <h3>Live AI News Scanner</h3>
+                <h3>Current News Detection</h3>
                 <p class="dash-subtitle">Enter a keyword or paste a live news article URL to fetch and evaluate with AI.</p>
                 <form id="liveAiForm" onsubmit="runLiveAiScan(); return false;">
                     <input type="text" name="keyword" id="liveAiKeyword" class="news-box"
@@ -356,13 +356,26 @@ async function runLiveAiScan() {
     try {
         var resp = await fetch('/api/live-news-analyze', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify({ keyword: keyword })
         });
-        var data = await resp.json();
+        var responseText = await resp.text();
+        var data;
+        try {
+            data = responseText ? JSON.parse(responseText) : {};
+        } catch (parseError) {
+            throw new Error(
+                resp.ok
+                    ? 'The analysis service returned an invalid response.'
+                    : 'The analysis service returned an unexpected response (HTTP ' + resp.status + ').'
+            );
+        }
 
         if (!resp.ok || data.error) {
-            resultPanel.innerHTML = errorCard('Scan Failed', data.error || 'Failed to fetch and analyze news.');
+            resultPanel.innerHTML = errorCard(
+                'Scan Failed',
+                data.error || 'Failed to fetch and analyze news (HTTP ' + resp.status + ').'
+            );
             return;
         }
 
@@ -439,7 +452,10 @@ async function runLiveAiScan() {
         resultPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
     } catch (err) {
-        resultPanel.innerHTML = errorCard('Network Error', 'Unable to connect to the analysis service. Please check your connection and try again.');
+        var message = err && err.message
+            ? err.message
+            : 'Unable to connect to the analysis service. Please check your connection and try again.';
+        resultPanel.innerHTML = errorCard('Scan Error', message);
     } finally {
         btn.innerHTML = '⚡ Fetch &amp; AI-Analyze';
         btn.disabled  = false;
@@ -500,7 +516,7 @@ async function runLiveAiScan() {
     }
     updateStatsDisplay();
 
-    /* ── NLP Classifier form (AJAX) ────────────────────────────── */
+    /* ── News Detection form (AJAX) ───────────────────────────── */
     var analyzeForm = document.getElementById('analyzeForm');
     if (analyzeForm) {
         analyzeForm.addEventListener('submit', async function (e) {

@@ -209,6 +209,8 @@ def fetch_live_news(keyword):
             raise ValueError("This source is not supported for article analysis. Please paste article text or use a news webpage URL.")
         return fetch_article_from_url(query)
 
+    fetch_errors = []
+
     # 2. GNews API attempt (if key available)
     api_key = os.environ.get("GNEWS_API_KEY") or os.environ.get("NEWS_API_KEY")
     if api_key:
@@ -220,18 +222,28 @@ def fetch_live_news(keyword):
                 articles = data.get("articles", [])
                 if articles:
                     return articles[0]
-        except Exception:
-            pass  # Fall back to RSS
+                fetch_errors.append("GNews returned no articles")
+            else:
+                fetch_errors.append(f"GNews returned HTTP {response.status_code}")
+        except requests.RequestException as exc:
+            fetch_errors.append(f"GNews request failed: {exc}")
+        except (ValueError, TypeError) as exc:
+            fetch_errors.append(f"GNews returned invalid data: {exc}")
 
     # 3. RSS Fallback (Requires no API key)
     try:
         rss_article = fetch_from_google_news_rss(query)
         if rss_article:
             return rss_article
-    except Exception:
-        pass
+        fetch_errors.append("Google News RSS returned no articles")
+    except (HTTPError, URLError, ET.ParseError, TimeoutError) as exc:
+        fetch_errors.append(f"Google News RSS request failed: {exc}")
+    except Exception as exc:
+        fetch_errors.append(f"Google News RSS failed: {exc}")
 
-    raise ValueError(f"No news articles found for: '{query}'")
+    details = "; ".join(fetch_errors)
+    suffix = f" Details: {details}" if details else ""
+    raise ValueError(f"No news articles found for: '{query}'.{suffix}")
 
 
 def format_article_for_analysis(article):
@@ -325,7 +337,7 @@ News to analyze:
 
             return (
                 f"Trust Score: {trust_score}/10\n\n"
-                f"NLP Classifier Evaluation:\n"
+                f"News Detection Evaluation:\n"
                 f"• Verdict: {pred} ({conf_str} confidence)\n"
                 f"• Matched News Signals: {matched_sigs}\n"
                 f"• Key Keywords: {top_words}"
@@ -337,4 +349,3 @@ News to analyze:
     raise RuntimeError(
         "Gemini API Key is missing. Please set the GEMINI_API_KEY environment variable."
     )
-

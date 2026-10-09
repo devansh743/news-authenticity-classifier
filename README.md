@@ -19,8 +19,8 @@ A full-stack Machine Learning application that detects fake news articles with h
 
 | Feature | Description |
 |---|---|
-| 🧠 **NLP Classifier** | Instant fake/real prediction using a Passive Aggressive Classifier trained on 40K+ articles |
-| ⚡ **Live AI Scanner** | Fetches real breaking news via GNews API and evaluates credibility with Google Gemini |
+| 🧠 **News Detection** | Instant fake/real prediction using a Passive Aggressive Classifier trained on 40K+ articles |
+| ⚡ **Current News Detection** | Fetches current news via GNews API and evaluates credibility with Google Gemini |
 | 📊 **Dashboard & Stats** | Personalized prediction history with an interactive Chart.js donut chart |
 | 🔐 **Secure Auth** | Full Login/Registration with bcrypt-hashed passwords |
 | 👤 **Admin Panel** | Manage users, view all predictions, and delete records |
@@ -144,7 +144,7 @@ All 19 tests should pass (app logic + news pipeline).
 
 | Variable | Required | Description |
 |---|---|---|
-| `GNEWS_API_KEY` | ✅ For Live AI Scanner | GNews API key |
-| `GEMINI_API_KEY` | ✅ For Live AI Scanner | Google Gemini API key |
+| `GNEWS_API_KEY` | ❌ Optional | GNews API key; Google News RSS is used when it is unavailable |
+| `GEMINI_API_KEY` | ❌ Optional | Google Gemini API key; the local classifier is used when it is unavailable |
 | `DB_PATH` | ❌ Optional | Custom path for SQLite database |
 | `PORT` | ❌ Optional | Server port (default: `5000`) |

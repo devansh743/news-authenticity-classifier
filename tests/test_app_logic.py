@@ -74,6 +74,39 @@ class AppLogicTests(unittest.TestCase):
         self.assertIn("real/fake verdict was forced", payload["notice"].lower())
         mock_predict_article.assert_not_called()
 
+    @patch("app.analyze_news_with_gemini")
+    @patch("app.fetch_live_news")
+    def test_live_news_api_returns_analysis(self, mock_fetch_live_news, mock_analyze):
+        mock_fetch_live_news.return_value = {
+            "title": "Breaking Election News",
+            "description": "Officials announced a policy update.",
+            "content": "Officials announced a policy update after a committee meeting.",
+            "url": "https://example.com/news",
+            "source": {"name": "Example", "url": "https://example.com"},
+        }
+        mock_analyze.return_value = "Trust Score: 8/10"
+
+        with app.app.test_client() as client:
+            response = client.post(
+                "/api/live-news-analyze",
+                json={"keyword": "election"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["analysis"], "Trust Score: 8/10")
+        mock_fetch_live_news.assert_called_once_with("election")
+
+    @patch("app.fetch_live_news", side_effect=ValueError("news source unavailable"))
+    def test_live_news_api_returns_source_error(self, mock_fetch_live_news):
+        with app.app.test_client() as client:
+            response = client.post(
+                "/api/live-news-analyze",
+                json={"keyword": "election"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()["error"], "news source unavailable")
+
     @patch("app.compute_features")
     @patch("app.model")
     def test_predict_article_uses_highest_probability_class(self, mock_model, mock_compute_features):
