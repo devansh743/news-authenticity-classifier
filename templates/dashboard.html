@@ -325,6 +325,10 @@ function switchTab(clickedBtn, tabId) {
     }
 }
 
+if (window.location.hash === '#news-detection') {
+    switchTab('nlp-tab');
+}
+
 function escHtml(str) {
     if (!str) return '';
     return String(str)
