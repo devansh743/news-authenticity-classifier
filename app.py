@@ -9,30 +9,50 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
 from werkzeug.security import generate_password_hash, check_password_hash
-from news_pipeline import (
-    analyze_news_with_gemini,
-    fetch_live_news,
-    format_article_for_analysis,
-)
 
 ADMIN_EMAIL = "admin@fnd.com"
 ADMIN_PASSWORD = "admin123"
 
+
+def _news_pipeline():
+    import news_pipeline
+    return news_pipeline
+
+
+def analyze_news_with_gemini(*args, **kwargs):
+    return _news_pipeline().analyze_news_with_gemini(*args, **kwargs)
+
+
+def fetch_live_news(*args, **kwargs):
+    return _news_pipeline().fetch_live_news(*args, **kwargs)
+
+
+def format_article_for_analysis(*args, **kwargs):
+    return _news_pipeline().format_article_for_analysis(*args, **kwargs)
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "model.pkl")
 
-with open(MODEL_PATH, "rb") as f:
-    model = pickle.load(f)
-
-# TF-IDF vectorizer used by the saved classifier artifact
 VECT_PATH = os.path.join(BASE_DIR, "vectorizer.pkl")
+model = None
 vectorizer = None
-if os.path.exists(VECT_PATH):
-    try:
-        with open(VECT_PATH, 'rb') as vf:
-            vectorizer = pickle.load(vf)
-    except Exception:
-        vectorizer = None
+
+
+def load_model_artifacts():
+    """Load the large ML artifacts only when an inference request needs them."""
+    global model, vectorizer
+
+    if model is None:
+        if not os.path.exists(MODEL_PATH):
+            raise RuntimeError("model.pkl is required for inference")
+        with open(MODEL_PATH, "rb") as model_file:
+            model = pickle.load(model_file)
+
+    if vectorizer is None:
+        if not os.path.exists(VECT_PATH):
+            raise RuntimeError("vectorizer.pkl is required for inference")
+        with open(VECT_PATH, "rb") as vectorizer_file:
+            vectorizer = pickle.load(vectorizer_file)
 
 app = Flask(__name__)
 app.secret_key = "secretkey123"
@@ -328,8 +348,7 @@ def fetch_article_text(url):
 def compute_features(texts):
     if isinstance(texts, str):
         texts = [texts]
-    if vectorizer is None:
-        raise RuntimeError("vectorizer.pkl is required for inference")
+    load_model_artifacts()
     return vectorizer.transform(texts)
 
 
